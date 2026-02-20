@@ -10,14 +10,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.demo.navigation.BottomNavItem
 import com.example.demo.navigation.BottomNavigationBar
 import com.example.demo.screens.FindScreen
 import com.example.demo.screens.HomeScreen
 import com.example.demo.screens.LibraryScreen
+import com.example.demo.screens.PlaylistDetailScreen
 import com.example.demo.ui.theme.DemoTheme
 
 class MainActivity : ComponentActivity() {
@@ -39,7 +42,11 @@ fun MainScreen() {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            BottomNavigationBar(navController = navController)
+            // Hide bottom bar on playlist detail screen
+            val currentRoute = navController.currentBackStackEntry?.destination?.route
+            if (currentRoute?.startsWith("playlist_detail") != true) {
+                BottomNavigationBar(navController = navController)
+            }
         }
     ) { innerPadding ->
         NavHost(
@@ -51,10 +58,24 @@ fun MainScreen() {
                 HomeScreen()
             }
             composable(BottomNavItem.Library.route) {
-                LibraryScreen()
+                LibraryScreen(
+                    onPlaylistClick = { playlistId ->
+                        navController.navigate("playlist_detail/$playlistId")
+                    }
+                )
             }
             composable(BottomNavItem.Find.route) {
                 FindScreen()
+            }
+            composable(
+                route = "playlist_detail/{playlistId}",
+                arguments = listOf(navArgument("playlistId") { type = NavType.LongType })
+            ) { backStackEntry ->
+                val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: 0L
+                PlaylistDetailScreen(
+                    playlistId = playlistId,
+                    onNavigateBack = { navController.navigateUp() }
+                )
             }
         }
     }
