@@ -22,16 +22,19 @@ import coil.compose.AsyncImage
 import com.example.demo.data.Song
 import com.example.demo.service.PlaybackState
 import com.example.demo.viewmodel.PlaylistDetailViewModel
+import com.example.demo.viewmodel.PlayerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistDetailScreen(
     playlistId: Long,
     onNavigateBack: () -> Unit,
+    playerViewModel: PlayerViewModel,
     viewModel: PlaylistDetailViewModel = viewModel()
 ) {
     val playlistWithSongs by viewModel.playlistWithSongs.collectAsState()
-    val playbackState by viewModel.playbackState.collectAsState()
+    val playbackState by playerViewModel.playbackState.collectAsState()
+    val currentSong by playerViewModel.currentSong.collectAsState()
     
     LaunchedEffect(playlistId) {
         viewModel.loadPlaylist(playlistId)
@@ -80,31 +83,15 @@ fun PlaylistDetailScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(playlist.songs) { song ->
+                    items(playlist.songs.size) { index ->
+                        val song = playlist.songs[index]
                         SongItem(
                             song = song,
-                            isPlaying = playbackState is PlaybackState.Playing && 
-                                       (playbackState as? PlaybackState.Playing)?.songId == song.id,
-                            isPaused = playbackState is PlaybackState.Paused && 
-                                      (playbackState as? PlaybackState.Paused)?.songId == song.id,
+                            isPlaying = playbackState is PlaybackState.Playing && currentSong?.id == song.id,
+                            isPaused = playbackState is PlaybackState.Paused && currentSong?.id == song.id,
                             onSongClick = { 
-                                when (playbackState) {
-                                    is PlaybackState.Playing -> {
-                                        if ((playbackState as PlaybackState.Playing).songId == song.id) {
-                                            viewModel.pauseSong()
-                                        } else {
-                                            viewModel.playSong(song)
-                                        }
-                                    }
-                                    is PlaybackState.Paused -> {
-                                        if ((playbackState as PlaybackState.Paused).songId == song.id) {
-                                            viewModel.resumeSong()
-                                        } else {
-                                            viewModel.playSong(song)
-                                        }
-                                    }
-                                    else -> viewModel.playSong(song)
-                                }
+                                // Set the entire playlist and start playing from this song
+                                playerViewModel.setPlaylist(playlist.songs, index)
                             }
                         )
                     }

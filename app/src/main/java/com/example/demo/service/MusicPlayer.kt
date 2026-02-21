@@ -40,6 +40,10 @@ class MusicPlayer(private val context: Context) {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(context, Uri.parse(uri))
                 prepare()
+                
+                // Set duration after prepare
+                _duration.value = duration
+                
                 start()
                 
                 setOnCompletionListener {
@@ -53,7 +57,6 @@ class MusicPlayer(private val context: Context) {
                 }
             }
             
-            _duration.value = mediaPlayer?.duration ?: 0
             _playbackState.value = PlaybackState.Playing(songId)
             
         } catch (e: Exception) {
@@ -91,6 +94,10 @@ class MusicPlayer(private val context: Context) {
     
     fun getCurrentPosition(): Int {
         return mediaPlayer?.currentPosition ?: 0
+    }
+    
+    fun getDuration(): Int {
+        return mediaPlayer?.duration ?: 0
     }
     
     fun isPlaying(): Boolean {
