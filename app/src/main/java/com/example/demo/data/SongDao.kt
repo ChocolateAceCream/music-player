@@ -14,6 +14,9 @@ interface SongDao {
     @Query("SELECT * FROM songs ORDER BY last_played_at DESC")
     fun getRecentlyPlayedSongs(): Flow<List<Song>>
     
+    @Query("SELECT * FROM songs ORDER BY downloaded_at DESC LIMIT 50")
+    fun getRecentlyDownloadedSongs(): Flow<List<Song>>
+    
     @Query("SELECT * FROM songs WHERE name LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR album LIKE '%' || :query || '%'")
     fun searchSongs(query: String): Flow<List<Song>>
     

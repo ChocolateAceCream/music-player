@@ -8,6 +8,8 @@ class SongRepository(private val songDao: SongDao) {
     
     val recentlyPlayedSongs: Flow<List<Song>> = songDao.getRecentlyPlayedSongs()
     
+    val recentlyDownloadedSongs: Flow<List<Song>> = songDao.getRecentlyDownloadedSongs()
+    
     suspend fun getSongById(songId: Long): Song? {
         return songDao.getSongById(songId)
     }

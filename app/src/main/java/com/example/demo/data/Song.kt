@@ -25,5 +25,8 @@ data class Song(
     val link: String,
     
     @ColumnInfo(name = "last_played_at")
-    val lastPlayedAt: Long? = null
+    val lastPlayedAt: Long? = null,
+    
+    @ColumnInfo(name = "downloaded_at")
+    val downloadedAt: Long = System.currentTimeMillis()
 )

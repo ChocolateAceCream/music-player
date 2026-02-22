@@ -1,6 +1,9 @@
 package com.example.demo.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -47,20 +50,27 @@ fun PlayerScreen(
             )
         }
     ) { paddingValues ->
-        currentSong?.let { song ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // Scrollable content taking available vertical space above controls
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(24.dp),
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                    Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                    // Album art
+                // Album art and song info (only if we have a song)
+                currentSong?.let { song ->
                     Card(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxWidth(0.9f)
                             .aspectRatio(1f),
                         shape = MaterialTheme.shapes.medium,
                         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
@@ -73,12 +83,11 @@ fun PlayerScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    // Song info
                     Text(
                         text = song.name,
-                        fontSize = 24.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
@@ -88,9 +97,9 @@ fun PlayerScreen(
 
                     Text(
                         text = song.author,
-                        fontSize = 18.sp,
+                        fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
 
@@ -98,123 +107,148 @@ fun PlayerScreen(
 
                     Text(
                         text = song.album,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+            }
 
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    // Progress bar
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Slider(
-                            value = progress,
-                            onValueChange = { newProgress ->
-                                val newPosition = (newProgress * duration).roundToInt()
-                                playerViewModel.seekTo(newPosition)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = formatTime(currentPosition),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = formatTime(duration),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+            // Fixed bottom controls + progress bar
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+            ) {
+                // Progress bar
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Slider(
+                        value = progress,
+                        onValueChange = { newProgress ->
+                            val newPosition = (newProgress * duration).roundToInt()
+                            playerViewModel.seekTo(newPosition)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = androidx.compose.ui.graphics.Color.Transparent,
+                            activeTrackColor = androidx.compose.ui.graphics.Color(0xFFFF69B4), // Hot pink
+                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            activeTickColor = androidx.compose.ui.graphics.Color.Transparent,
+                            inactiveTickColor = androidx.compose.ui.graphics.Color.Transparent,
+                            disabledThumbColor = androidx.compose.ui.graphics.Color.Transparent,
+                            disabledActiveTrackColor = androidx.compose.ui.graphics.Color.Transparent,
+                            disabledInactiveTrackColor = androidx.compose.ui.graphics.Color.Transparent,
+                            disabledActiveTickColor = androidx.compose.ui.graphics.Color.Transparent,
+                            disabledInactiveTickColor = androidx.compose.ui.graphics.Color.Transparent
+                        ),
+                        thumb = {
+                            androidx.compose.foundation.Canvas(
+                                modifier = Modifier.size(12.dp)
+                            ) {
+                                drawCircle(
+                                    color = androidx.compose.ui.graphics.Color(0xFFFF69B4) // Hot pink dot only
+                                )
+                            }
                         }
-                    }
+                    )
 
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Control buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Shuffle button
-                        IconButton(
-                            onClick = { playerViewModel.toggleShuffle() }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Shuffle,
-                                contentDescription = "Shuffle",
-                                tint = if (isShuffleEnabled) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
+                        Text(
+                            text = formatTime(currentPosition),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = formatTime(duration),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
-                        // Previous button
-                        IconButton(
-                            onClick = { playerViewModel.playPrevious() }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipPrevious,
-                                contentDescription = "Previous",
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
+                Spacer(modifier = Modifier.height(24.dp))
 
-                        // Play/Pause button
-                        FilledIconButton(
-                            onClick = { playerViewModel.togglePlayPause() },
-                            modifier = Modifier.size(64.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (playbackState is PlaybackState.Playing) {
-                                    Icons.Default.Pause
-                                } else {
-                                    Icons.Default.PlayArrow
-                                },
-                                contentDescription = if (playbackState is PlaybackState.Playing) "Pause" else "Play",
-                                modifier = Modifier.size(36.dp)
-                            )
-                        }
-
-                        // Next button
-                        IconButton(
-                            onClick = { playerViewModel.playNext() }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipNext,
-                                contentDescription = "Next",
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
-
-                        // Playlist button
-                        IconButton(
-                            onClick = onShowPlaylist
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.QueueMusic,
-                                contentDescription = "Playlist",
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
+                // Control buttons (fixed at bottom)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Shuffle button
+                    IconButton(
+                        onClick = { playerViewModel.toggleShuffle() }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shuffle,
+                            contentDescription = "Shuffle",
+                            tint = if (isShuffleEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(28.dp)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    // Previous button
+                    IconButton(
+                        onClick = { playerViewModel.playPrevious() }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous",
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+
+                    // Play/Pause button
+                    FilledIconButton(
+                        onClick = { playerViewModel.togglePlayPause() },
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (playbackState is PlaybackState.Playing) {
+                                Icons.Default.Pause
+                            } else {
+                                Icons.Default.PlayArrow
+                            },
+                            contentDescription = if (playbackState is PlaybackState.Playing) "Pause" else "Play",
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    // Next button
+                    IconButton(
+                        onClick = { playerViewModel.playNext() }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next",
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+
+                    // Playlist button
+                    IconButton(
+                        onClick = onShowPlaylist
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QueueMusic,
+                            contentDescription = "Playlist",
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
             }
         }
     }
+}
 
 private fun formatTime(milliseconds: Int): String {
     val totalSeconds = milliseconds / 1000

@@ -23,4 +23,5 @@ object SystemPlaylists {
     const val ALL_SONGS = "All Songs"
     const val RECENT_PLAYED = "Recent Played"
     const val FAVORITE = "Favorite"
+    const val RECENT_DOWNLOAD = "Recent Download"
 }
