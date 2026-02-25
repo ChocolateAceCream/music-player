@@ -268,10 +268,14 @@ fun PlayerScreen(
                         )
                     }
 
-                    // Play/Pause button
+                    // Play/Pause button with hot pink background
                     FilledIconButton(
                         onClick = { playerViewModel.togglePlayPause() },
-                        modifier = Modifier.size(64.dp)
+                        modifier = Modifier.size(64.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = androidx.compose.ui.graphics.Color(0xFFFF69B4), // Hot pink
+                            contentColor = androidx.compose.ui.graphics.Color.White
+                        )
                     ) {
                         Icon(
                             imageVector = if (playbackState is PlaybackState.Playing) {

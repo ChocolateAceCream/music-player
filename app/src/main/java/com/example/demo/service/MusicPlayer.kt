@@ -90,7 +90,8 @@ class MusicPlayer(private val context: Context) {
             
             audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(audioAttributes)
-                .setAcceptsDelayedFocusGain(true)
+                .setAcceptsDelayedFocusGain(false) // Be more aggressive - don't wait
+                .setWillPauseWhenDucked(true) // Force other apps to pause, not just duck
                 .setOnAudioFocusChangeListener(audioFocusChangeListener)
                 .build()
             
@@ -107,7 +108,8 @@ class MusicPlayer(private val context: Context) {
         return when (result) {
             AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> true
             AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
-                playbackDelayed = true
+                // Don't accept delayed focus - fail immediately
+                Log.w("MusicPlayer", "Audio focus delayed, not playing")
                 false
             }
             else -> false

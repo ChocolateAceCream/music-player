@@ -39,10 +39,12 @@ fun MiniPlayer(
             tonalElevation = 3.dp
         ) {
             Column {
-                // Progress bar
+                // Progress bar with hot pink color
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth(),
+                    color = androidx.compose.ui.graphics.Color(0xFFFF69B4), // Hot pink
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
 
                 Row(
@@ -104,22 +106,28 @@ fun MiniPlayer(
                         Icon(
                             imageVector = Icons.Default.SkipPrevious,
                             contentDescription = "Previous",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = androidx.compose.ui.graphics.Color(0xFFFF69B4) // Hot pink
                         )
                     }
 
-                    IconButton(onClick = {
-                        playerViewModel.togglePlayPause()
-                        playerViewModel.refreshPlayerState()
-                    }) {
+                    // Play/Pause button with hot pink background
+                    FilledIconButton(
+                        onClick = {
+                            playerViewModel.togglePlayPause()
+                            playerViewModel.refreshPlayerState()
+                        },
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = androidx.compose.ui.graphics.Color(0xFFFF69B4), // Hot pink
+                            contentColor = androidx.compose.ui.graphics.Color.White
+                        )
+                    ) {
                         Icon(
                             imageVector = if (playbackState is PlaybackState.Playing) {
                                 Icons.Default.Pause
                             } else {
                                 Icons.Default.PlayArrow
                             },
-                            contentDescription = if (playbackState is PlaybackState.Playing) "Pause" else "Play",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            contentDescription = if (playbackState is PlaybackState.Playing) "Pause" else "Play"
                         )
                     }
 
@@ -130,7 +138,7 @@ fun MiniPlayer(
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "Next",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = androidx.compose.ui.graphics.Color(0xFFFF69B4) // Hot pink
                         )
                     }
                 }
