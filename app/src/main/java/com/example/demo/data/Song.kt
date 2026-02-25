@@ -28,5 +28,8 @@ data class Song(
     val lastPlayedAt: Long? = null,
     
     @ColumnInfo(name = "downloaded_at")
-    val downloadedAt: Long = System.currentTimeMillis()
+    val downloadedAt: Long = System.currentTimeMillis(),
+    
+    @ColumnInfo(name = "is_favorite")
+    val isFavorite: Boolean = false
 )

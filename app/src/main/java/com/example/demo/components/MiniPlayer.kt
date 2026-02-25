@@ -48,17 +48,17 @@ fun MiniPlayer(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = {
-                            // Ensure duration is loaded before expanding
-                            playerViewModel.refreshPlayerState()
-                            onExpand()
-                        })
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Album art
+                    // Album art - clickable
                     Card(
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clickable {
+                                playerViewModel.refreshPlayerState()
+                                onExpand()
+                            },
                         shape = MaterialTheme.shapes.small
                     ) {
                         AsyncImage(
@@ -71,9 +71,14 @@ fun MiniPlayer(
 
                     Spacer(modifier = Modifier.width(12.dp))
 
-                    // Song info
+                    // Song info - clickable
                     Column(
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                playerViewModel.refreshPlayerState()
+                                onExpand()
+                            }
                     ) {
                         Text(
                             text = song.name,
@@ -95,7 +100,6 @@ fun MiniPlayer(
                     IconButton(onClick = {
                         playerViewModel.playPrevious()
                         playerViewModel.refreshPlayerState()
-                        onExpand()
                     }) {
                         Icon(
                             imageVector = Icons.Default.SkipPrevious,
@@ -107,7 +111,6 @@ fun MiniPlayer(
                     IconButton(onClick = {
                         playerViewModel.togglePlayPause()
                         playerViewModel.refreshPlayerState()
-                        onExpand()
                     }) {
                         Icon(
                             imageVector = if (playbackState is PlaybackState.Playing) {
@@ -123,7 +126,6 @@ fun MiniPlayer(
                     IconButton(onClick = {
                         playerViewModel.playNext()
                         playerViewModel.refreshPlayerState()
-                        onExpand()
                     }) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,

@@ -1,8 +1,12 @@
 package com.example.demo.service
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +16,10 @@ class MusicPlayer(private val context: Context) {
     
     private var mediaPlayer: MediaPlayer? = null
     private var currentSongId: Long? = null
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var playbackDelayed = false
+    private var resumeOnFocusGain = false
     
     private val _playbackState = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
@@ -22,8 +30,111 @@ class MusicPlayer(private val context: Context) {
     private val _duration = MutableStateFlow(0)
     val duration: StateFlow<Int> = _duration.asStateFlow()
     
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                // Resume playback if we were paused due to focus loss
+                synchronized(this) {
+                    if (playbackDelayed || resumeOnFocusGain) {
+                        playbackDelayed = false
+                        resumeOnFocusGain = false
+                        resume()
+                    }
+                }
+                try {
+                    mediaPlayer?.setVolume(1.0f, 1.0f)
+                } catch (e: IllegalStateException) {
+                    Log.e("MusicPlayer", "Error setting volume: ${e.message}")
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                // Lost focus permanently (e.g., another app starts playing music)
+                // Stop playback completely and don't resume
+                synchronized(this) {
+                    resumeOnFocusGain = false
+                    playbackDelayed = false
+                }
+                pause()
+                // Optionally, you could call release() here to fully stop and clean up
+                // but pause() allows user to manually resume if they want
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                // Lost focus for a short time: pause playback and resume when focus is regained
+                synchronized(this) {
+                    resumeOnFocusGain = try {
+                        mediaPlayer?.isPlaying == true
+                    } catch (e: IllegalStateException) {
+                        false
+                    }
+                    playbackDelayed = false
+                }
+                pause()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Lost focus for a short time, but it's ok to keep playing at a lower volume
+                try {
+                    mediaPlayer?.setVolume(0.2f, 0.2f)
+                } catch (e: IllegalStateException) {
+                    Log.e("MusicPlayer", "Error setting volume: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    private fun requestAudioFocus(): Boolean {
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(audioAttributes)
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                .build()
+            
+            audioManager.requestAudioFocus(audioFocusRequest!!)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                audioFocusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+        
+        return when (result) {
+            AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> true
+            AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
+                playbackDelayed = true
+                false
+            }
+            else -> false
+        }
+    }
+    
+    private fun abandonAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let {
+                audioManager.abandonAudioFocusRequest(it)
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(audioFocusChangeListener)
+        }
+    }
+    
     fun playSong(songId: Long, uri: String) {
         try {
+            // Request audio focus before playing
+            if (!requestAudioFocus()) {
+                Log.w("MusicPlayer", "Failed to gain audio focus")
+                if (!playbackDelayed) {
+                    return
+                }
+            }
+            
             // If same song is playing, just resume
             if (currentSongId == songId && mediaPlayer != null) {
                 if (!mediaPlayer!!.isPlaying) {
@@ -34,10 +145,17 @@ class MusicPlayer(private val context: Context) {
             }
             
             // Release previous player
-            release()
+            releaseMediaPlayer()
             
             currentSongId = songId
             mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+                
                 setDataSource(context, Uri.parse(uri))
                 prepare()
                 
@@ -47,10 +165,13 @@ class MusicPlayer(private val context: Context) {
                 start()
                 
                 setOnCompletionListener {
-                    _playbackState.value = PlaybackState.Completed(songId)
+                    // Check if this is still the current song to avoid race conditions
+                    if (currentSongId == songId) {
+                        _playbackState.value = PlaybackState.Completed(songId)
+                    }
                 }
                 
-                setOnErrorListener { _, what, extra ->
+                setOnErrorListener { mp, what, extra ->
                     Log.e("MusicPlayer", "Error: what=$what, extra=$extra")
                     _playbackState.value = PlaybackState.Error("Playback error occurred")
                     true
@@ -66,47 +187,90 @@ class MusicPlayer(private val context: Context) {
     }
     
     fun pause() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
-                currentSongId?.let { id ->
-                    _playbackState.value = PlaybackState.Paused(id)
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    it.pause()
+                    currentSongId?.let { id ->
+                        _playbackState.value = PlaybackState.Paused(id)
+                    }
                 }
             }
+        } catch (e: IllegalStateException) {
+            Log.e("MusicPlayer", "Error pausing: ${e.message}")
         }
     }
     
     fun resume() {
-        mediaPlayer?.let {
-            if (!it.isPlaying) {
-                it.start()
-                currentSongId?.let { id ->
-                    _playbackState.value = PlaybackState.Playing(id)
+        try {
+            mediaPlayer?.let {
+                if (!it.isPlaying) {
+                    it.start()
+                    currentSongId?.let { id ->
+                        _playbackState.value = PlaybackState.Playing(id)
+                    }
                 }
             }
+        } catch (e: IllegalStateException) {
+            Log.e("MusicPlayer", "Error resuming: ${e.message}")
         }
     }
     
     fun seekTo(position: Int) {
-        mediaPlayer?.seekTo(position)
-        _currentPosition.value = position
+        try {
+            mediaPlayer?.seekTo(position)
+            _currentPosition.value = position
+        } catch (e: IllegalStateException) {
+            Log.e("MusicPlayer", "Error seeking: ${e.message}")
+        }
     }
     
     fun getCurrentPosition(): Int {
-        return mediaPlayer?.currentPosition ?: 0
+        return try {
+            mediaPlayer?.currentPosition ?: 0
+        } catch (e: IllegalStateException) {
+            Log.e("MusicPlayer", "Error getting position: ${e.message}")
+            0
+        }
     }
     
     fun getDuration(): Int {
-        return mediaPlayer?.duration ?: 0
+        return try {
+            mediaPlayer?.duration ?: 0
+        } catch (e: IllegalStateException) {
+            Log.e("MusicPlayer", "Error getting duration: ${e.message}")
+            0
+        }
     }
     
     fun isPlaying(): Boolean {
-        return mediaPlayer?.isPlaying ?: false
+        return try {
+            mediaPlayer?.isPlaying ?: false
+        } catch (e: IllegalStateException) {
+            Log.e("MusicPlayer", "Error checking isPlaying: ${e.message}")
+            false
+        }
+    }
+    
+    private fun releaseMediaPlayer() {
+        try {
+            mediaPlayer?.apply {
+                if (isPlaying) {
+                    stop()
+                }
+                reset()
+                release()
+            }
+        } catch (e: Exception) {
+            Log.e("MusicPlayer", "Error releasing MediaPlayer: ${e.message}")
+        } finally {
+            mediaPlayer = null
+        }
     }
     
     fun release() {
-        mediaPlayer?.release()
-        mediaPlayer = null
+        releaseMediaPlayer()
+        abandonAudioFocus()
         currentSongId = null
         _playbackState.value = PlaybackState.Idle
         _currentPosition.value = 0

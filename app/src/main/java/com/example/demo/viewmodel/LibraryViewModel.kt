@@ -28,7 +28,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     
     init {
         val database = AppDatabase.getDatabase(application)
-        songRepository = SongRepository(database.songDao())
+        songRepository = SongRepository(database.songDao(), database.playlistDao())
         playlistRepository = PlaylistRepository(database.playlistDao())
         musicScanner = MusicScanner(application, songRepository, playlistRepository)
         

@@ -37,4 +37,13 @@ interface SongDao {
     
     @Query("UPDATE songs SET last_played_at = :timestamp WHERE id = :songId")
     suspend fun updateLastPlayedAt(songId: Long, timestamp: Long)
+    
+    @Query("UPDATE songs SET is_favorite = :isFavorite WHERE id = :songId")
+    suspend fun updateFavoriteStatus(songId: Long, isFavorite: Boolean)
+    
+    @Query("SELECT is_favorite FROM songs WHERE id = :songId")
+    fun observeFavoriteStatus(songId: Long): Flow<Boolean?>
+    
+    @Query("SELECT * FROM songs WHERE is_favorite = 1 ORDER BY name ASC")
+    fun getFavoriteSongs(): Flow<List<Song>>
 }

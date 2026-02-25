@@ -42,13 +42,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _duration = MutableStateFlow(0)
     val duration: StateFlow<Int> = _duration.asStateFlow()
     
+    private val _isFavorite = MutableStateFlow(false)
+    val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
+    
     val playbackState: StateFlow<PlaybackState> = musicPlayer.playbackState
     
     private var progressJob: Job? = null
+    private var favoriteObserverJob: Job? = null
     
     init {
         val database = AppDatabase.getDatabase(application)
-        songRepository = SongRepository(database.songDao())
+        songRepository = SongRepository(database.songDao(), database.playlistDao())
         
         // Monitor playback state changes
         viewModelScope.launch {
@@ -84,6 +88,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             _currentPosition.value = 0
             _progress.value = 0f
             
+            // Observe favorite status for this song
+            observeCurrentSongFavorite(song.id)
+            
             // Update last played timestamp
             viewModelScope.launch {
                 songRepository.updateLastPlayedAt(song.id)
@@ -96,6 +103,26 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 if (dur > 0) {
                     _duration.value = dur
                 }
+            }
+        }
+    }
+    
+    private fun observeCurrentSongFavorite(songId: Long) {
+        // Cancel previous observer to prevent memory leaks
+        favoriteObserverJob?.cancel()
+        favoriteObserverJob = viewModelScope.launch {
+            songRepository.observeFavoriteStatus(songId)
+                .collect { isFav ->
+                    _isFavorite.value = isFav
+                }
+        }
+    }
+    
+    fun toggleFavorite() {
+        viewModelScope.launch {
+            currentSong.value?.let { song ->
+                val newStatus = songRepository.toggleFavorite(song.id)
+                _isFavorite.value = newStatus
             }
         }
     }
@@ -218,6 +245,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         stopProgressTracking()
+        favoriteObserverJob?.cancel()
         musicPlayer.release()
     }
 }
