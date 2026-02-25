@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.demo.data.AppDatabase
+import com.example.demo.data.PlaylistRepository
 import com.example.demo.data.Song
 import com.example.demo.data.SongRepository
 import com.example.demo.service.MusicPlayer
@@ -19,6 +20,7 @@ import kotlinx.coroutines.launch
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
     
     private val songRepository: SongRepository
+    private val playlistRepository: PlaylistRepository
     val musicPlayer: MusicPlayer = MusicPlayer(application)
     
     private val _currentSong = MutableStateFlow<Song?>(null)
@@ -53,6 +55,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     init {
         val database = AppDatabase.getDatabase(application)
         songRepository = SongRepository(database.songDao(), database.playlistDao())
+        playlistRepository = PlaylistRepository(database.playlistDao())
         
         // Monitor playback state changes
         viewModelScope.launch {
@@ -91,9 +94,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             // Observe favorite status for this song
             observeCurrentSongFavorite(song.id)
             
-            // Update last played timestamp
+            // Update last played timestamp and add to Recent Played playlist
             viewModelScope.launch {
                 songRepository.updateLastPlayedAt(song.id)
+                playlistRepository.addToRecentPlayed(song.id)
             }
             
             // Force an immediate duration update after a short delay

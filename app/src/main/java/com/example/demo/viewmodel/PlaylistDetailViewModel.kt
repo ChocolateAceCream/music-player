@@ -49,10 +49,16 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             val playlist = playlistRepository.getPlaylistWithSongs(playlistId)
             val adjustedPlaylist = playlist?.let {
-                if (it.playlist.name == SystemPlaylists.RECENT_DOWNLOAD) {
-                    it.copy(songs = it.songs.sortedByDescending { song -> song.downloadedAt })
-                } else {
-                    it
+                when (it.playlist.name) {
+                    SystemPlaylists.RECENT_DOWNLOAD -> {
+                        // Sort by download date (newest first)
+                        it.copy(songs = it.songs.sortedByDescending { song -> song.downloadedAt })
+                    }
+                    SystemPlaylists.RECENT_PLAYED -> {
+                        // Sort by last played date (most recent first)
+                        it.copy(songs = it.songs.sortedByDescending { song -> song.lastPlayedAt ?: 0 })
+                    }
+                    else -> it
                 }
             }
             _playlistWithSongs.value = adjustedPlaylist

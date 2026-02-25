@@ -138,4 +138,44 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
     suspend fun getFavoritePlaylistId(): Long? {
         return playlistDao.getFavoritePlaylistId()
     }
+    
+    suspend fun addToRecentPlayed(songId: Long) {
+        try {
+            // Get Recent Played playlist
+            val recentPlayedPlaylist = getPlaylistByName(SystemPlaylists.RECENT_PLAYED)
+            if (recentPlayedPlaylist == null) {
+                android.util.Log.e("PlaylistRepository", "Recent Played playlist not found!")
+                return
+            }
+            
+            android.util.Log.d("PlaylistRepository", "Adding song $songId to Recent Played playlist ${recentPlayedPlaylist.id}")
+            
+            // Remove the song if it already exists in the playlist
+            removeSongFromPlaylist(recentPlayedPlaylist.id, songId)
+            
+            // Get current songs in the playlist
+            val playlistWithSongs = getPlaylistWithSongs(recentPlayedPlaylist.id)
+            val currentSongs = playlistWithSongs?.songs ?: emptyList()
+            
+            android.util.Log.d("PlaylistRepository", "Current songs in Recent Played: ${currentSongs.size}")
+            
+            // Add the song at position 0 (top of the list)
+            addSongToPlaylist(recentPlayedPlaylist.id, songId, position = 0)
+            
+            android.util.Log.d("PlaylistRepository", "Song added to Recent Played")
+            
+            // If we now have more than 50 songs, remove the oldest ones
+            if (currentSongs.size >= 50) {
+                // Remove songs beyond the 50th position
+                // Since we added one at the top, the 50th song (index 49) is now at position 50
+                val songsToRemove = currentSongs.drop(49) // Keep first 49, remove the rest
+                android.util.Log.d("PlaylistRepository", "Removing ${songsToRemove.size} old songs from Recent Played")
+                songsToRemove.forEach { song ->
+                    removeSongFromPlaylist(recentPlayedPlaylist.id, song.id)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("PlaylistRepository", "Error adding to Recent Played: ${e.message}", e)
+        }
+    }
 }
