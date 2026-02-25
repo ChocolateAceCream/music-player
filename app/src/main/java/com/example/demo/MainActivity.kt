@@ -90,7 +90,7 @@ fun MainScreen() {
                     )
                 }
                 composable(BottomNavItem.Find.route) {
-                    FindScreen()
+                    FindScreen(playerViewModel = playerViewModel)
                 }
                 composable(
                     route = "playlist_detail/{playlistId}",

@@ -36,6 +36,18 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     
     private val _availableSongs = MutableStateFlow<List<Song>>(emptyList())
     val availableSongs: StateFlow<List<Song>> = _availableSongs.asStateFlow()
+    
+    private val _isMultiSelectMode = MutableStateFlow(false)
+    val isMultiSelectMode: StateFlow<Boolean> = _isMultiSelectMode.asStateFlow()
+    
+    private val _selectedSongIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedSongIds: StateFlow<Set<Long>> = _selectedSongIds.asStateFlow()
+    
+    private val _showAddToPlaylistDialog = MutableStateFlow(false)
+    val showAddToPlaylistDialog: StateFlow<Boolean> = _showAddToPlaylistDialog.asStateFlow()
+    
+    private val _allPlaylists = MutableStateFlow<List<PlaylistWithSongs>>(emptyList())
+    val allPlaylists: StateFlow<List<PlaylistWithSongs>> = _allPlaylists.asStateFlow()
 
     val playbackState: StateFlow<PlaybackState> = musicPlayer.playbackState
 
@@ -158,6 +170,80 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             val playlist = _playlistWithSongs.value?.playlist
             if (playlist != null && !playlist.isSystem) {
                 playlistRepository.removeSongFromPlaylist(playlist.id, songId)
+                // Reload the playlist to update the list
+                loadPlaylist(playlist.id)
+            }
+        }
+    }
+    
+    // Multi-select methods
+    fun enterMultiSelectMode(songId: Long) {
+        _isMultiSelectMode.value = true
+        _selectedSongIds.value = setOf(songId)
+    }
+    
+    fun exitMultiSelectMode() {
+        _isMultiSelectMode.value = false
+        _selectedSongIds.value = emptySet()
+        // Also hide any open dialogs
+        _showAddToPlaylistDialog.value = false
+    }
+    
+    fun toggleSongSelection(songId: Long) {
+        val currentSelection = _selectedSongIds.value
+        _selectedSongIds.value = if (currentSelection.contains(songId)) {
+            currentSelection - songId
+        } else {
+            currentSelection + songId
+        }
+    }
+    
+    fun showAddToPlaylistDialog() {
+        viewModelScope.launch {
+            // Load all playlists
+            playlistRepository.allPlaylistsWithSongs.collect { playlists ->
+                // Filter out system playlists
+                _allPlaylists.value = playlists.filter { !it.playlist.isSystem }
+                _showAddToPlaylistDialog.value = true
+                return@collect
+            }
+        }
+    }
+    
+    fun hideAddToPlaylistDialog() {
+        _showAddToPlaylistDialog.value = false
+    }
+    
+    fun addSelectedSongsToPlaylist(targetPlaylistId: Long) {
+        viewModelScope.launch {
+            val songIds = _selectedSongIds.value.toList()
+            playlistRepository.addSongsToPlaylist(targetPlaylistId, songIds)
+            hideAddToPlaylistDialog()
+            exitMultiSelectMode()
+        }
+    }
+    
+    fun createPlaylistAndAddSongs(playlistName: String) {
+        viewModelScope.launch {
+            val newPlaylistId = playlistRepository.createPlaylist(playlistName)
+            val songIds = _selectedSongIds.value.toList()
+            playlistRepository.addSongsToPlaylist(newPlaylistId, songIds)
+            hideAddToPlaylistDialog()
+            exitMultiSelectMode()
+        }
+    }
+    
+    fun deleteSelectedSongs() {
+        viewModelScope.launch {
+            val playlist = _playlistWithSongs.value?.playlist
+            if (playlist != null && !playlist.isSystem) {
+                val songIds = _selectedSongIds.value.toList()
+                songIds.forEach { songId ->
+                    playlistRepository.removeSongFromPlaylist(playlist.id, songId)
+                }
+                // Make sure dialog is hidden
+                hideAddToPlaylistDialog()
+                exitMultiSelectMode()
                 // Reload the playlist to update the list
                 loadPlaylist(playlist.id)
             }
