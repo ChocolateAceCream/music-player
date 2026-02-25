@@ -1,6 +1,7 @@
 package com.example.demo.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,6 +38,10 @@ fun PlayerScreen(
     val duration by playerViewModel.duration.collectAsState()
     val isShuffleEnabled by playerViewModel.isShuffleEnabled.collectAsState()
     val isFavorite by playerViewModel.isFavorite.collectAsState()
+
+    val scrollState = rememberScrollState()
+    var totalDragAmountVertical by remember { mutableStateOf(0f) }
+    var totalDragAmountHorizontal by remember { mutableStateOf(0f) }
 
     Scaffold(
         topBar = {
@@ -63,7 +69,44 @@ fun PlayerScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(scrollState)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = {
+                                totalDragAmountVertical = 0f
+                                totalDragAmountHorizontal = 0f
+                            },
+                            onDragEnd = {
+                                // Check vertical swipe down to dismiss
+                                if (scrollState.value == 0 && totalDragAmountVertical > 150) {
+                                    onNavigateBack()
+                                }
+                                // Check horizontal swipe left for next song
+                                else if (totalDragAmountHorizontal < -150) {
+                                    playerViewModel.playNext()
+                                }
+                                // Check horizontal swipe right for previous song
+                                else if (totalDragAmountHorizontal > 150) {
+                                    playerViewModel.playPrevious()
+                                }
+                                totalDragAmountVertical = 0f
+                                totalDragAmountHorizontal = 0f
+                            },
+                            onDragCancel = {
+                                totalDragAmountVertical = 0f
+                                totalDragAmountHorizontal = 0f
+                            },
+                            onDrag = { change, dragAmount ->
+                                // Accumulate vertical drag (positive = down, negative = up)
+                                if (scrollState.value == 0 && dragAmount.y > 0) {
+                                    totalDragAmountVertical += dragAmount.y
+                                    change.consume()
+                                }
+                                // Accumulate horizontal drag (negative = left, positive = right)
+                                totalDragAmountHorizontal += dragAmount.x
+                            }
+                        )
+                    },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(12.dp))

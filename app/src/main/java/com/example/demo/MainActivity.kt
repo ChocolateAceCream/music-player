@@ -61,7 +61,9 @@ fun MainScreen() {
                 if (currentSong != null && !isOnPlayerScreen) {
                     MiniPlayer(
                         playerViewModel = playerViewModel,
-                        onExpand = { navController.navigate("player") }
+                        onExpand = { 
+                            navController.navigate("player")
+                        }
                     )
                 }
 
