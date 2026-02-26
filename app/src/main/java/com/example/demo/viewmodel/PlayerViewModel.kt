@@ -44,6 +44,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 Log.d("PlayerViewModel", "Play next callback triggered")
                 playNext()
             }
+            
+            // Set the play previous callback
+            musicPlaybackService?.setOnPlayPreviousCallback {
+                Log.d("PlayerViewModel", "Play previous callback triggered")
+                playPrevious()
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -136,8 +142,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             if (serviceBound) {
                 musicPlayer.playSong(song.id, song.link)
                 
-                // Start foreground service with notification
-                musicPlaybackService?.startForegroundService(song.name, song.author)
+                // Start foreground service with notification including album art
+                musicPlaybackService?.startForegroundService(
+                    song.name, 
+                    song.author,
+                    song.coverPageLink
+                )
             }
             
             // Reset duration, it will be updated by progress tracking
@@ -265,9 +275,33 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun togglePlayPause() {
         if (!serviceBound) return
         
+        val isPlaying = playbackState.value is PlaybackState.Playing
+        
         when (playbackState.value) {
-            is PlaybackState.Playing -> musicPlayer.pause()
-            is PlaybackState.Paused -> musicPlayer.resume()
+            is PlaybackState.Playing -> {
+                musicPlayer.pause()
+                // Update notification to show play button
+                _currentSong.value?.let { song ->
+                    musicPlaybackService?.updateNotification(
+                        song.name,
+                        song.author,
+                        song.coverPageLink,
+                        false
+                    )
+                }
+            }
+            is PlaybackState.Paused -> {
+                musicPlayer.resume()
+                // Update notification to show pause button
+                _currentSong.value?.let { song ->
+                    musicPlaybackService?.updateNotification(
+                        song.name,
+                        song.author,
+                        song.coverPageLink,
+                        true
+                    )
+                }
+            }
             else -> {
                 // If idle, play current song
                 _currentSong.value?.let { song ->

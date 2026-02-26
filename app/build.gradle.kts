@@ -71,6 +71,9 @@ dependencies {
     
     // CardView for floating player
     implementation("androidx.cardview:cardview:1.0.0")
+    
+    // Media session for lock screen controls
+    implementation("androidx.media:media:1.7.0")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
