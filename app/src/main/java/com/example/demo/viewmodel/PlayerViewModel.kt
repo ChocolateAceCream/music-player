@@ -9,6 +9,7 @@ import com.example.demo.data.Song
 import com.example.demo.data.SongRepository
 import com.example.demo.service.MusicPlayer
 import com.example.demo.service.PlaybackState
+import com.example.demo.service.PlayMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,8 +33,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentIndex = MutableStateFlow(0)
     val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
     
-    private val _isShuffleEnabled = MutableStateFlow(false)
-    val isShuffleEnabled: StateFlow<Boolean> = _isShuffleEnabled.asStateFlow()
+    private val _playMode = MutableStateFlow(PlayMode.LOOP)
+    val playMode: StateFlow<PlayMode> = _playMode.asStateFlow()
     
     private val _progress = MutableStateFlow(0f)
     val progress: StateFlow<Float> = _progress.asStateFlow()
@@ -158,6 +159,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         
         if (songs.isEmpty()) return
         
+        // In REPEAT_ONE mode, restart current song
+        if (_playMode.value == PlayMode.REPEAT_ONE) {
+            musicPlayer.seekTo(0)
+            return
+        }
+        
         val newIndex = if (currentIdx > 0) {
             currentIdx - 1
         } else {
@@ -173,19 +180,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         
         if (songs.isEmpty()) return
         
-        val newIndex = if (_isShuffleEnabled.value) {
-            // Random next song
-            (songs.indices).random()
-        } else {
-            // Sequential next song
-            if (currentIdx < songs.size - 1) {
-                currentIdx + 1
-            } else {
-                0 // Loop to first song
+        when (_playMode.value) {
+            PlayMode.REPEAT_ONE -> {
+                // Restart current song from beginning
+                musicPlayer.seekTo(0)
+            }
+            PlayMode.SHUFFLE -> {
+                // Random next song (avoid repeating current if possible)
+                val availableIndices = songs.indices.filter { it != currentIdx }
+                val newIndex = if (availableIndices.isNotEmpty()) {
+                    availableIndices.random()
+                } else {
+                    currentIdx // Only one song, replay it
+                }
+                playSongAt(newIndex)
+            }
+            PlayMode.LOOP -> {
+                // Sequential with loop
+                val newIndex = if (currentIdx < songs.size - 1) {
+                    currentIdx + 1
+                } else {
+                    0 // Loop to first song
+                }
+                playSongAt(newIndex)
             }
         }
-        
-        playSongAt(newIndex)
     }
     
     fun togglePlayPause() {
@@ -201,8 +220,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
     
-    fun toggleShuffle() {
-        _isShuffleEnabled.value = !_isShuffleEnabled.value
+    fun togglePlayMode() {
+        _playMode.value = when (_playMode.value) {
+            PlayMode.LOOP -> PlayMode.SHUFFLE
+            PlayMode.SHUFFLE -> PlayMode.REPEAT_ONE
+            PlayMode.REPEAT_ONE -> PlayMode.LOOP
+        }
     }
     
     fun seekTo(position: Int) {

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.demo.components.FavoriteIconButton
 import com.example.demo.service.PlaybackState
+import com.example.demo.service.PlayMode
 import com.example.demo.viewmodel.PlayerViewModel
 import kotlin.math.roundToInt
 
@@ -36,7 +37,7 @@ fun PlayerScreen(
     val progress by playerViewModel.progress.collectAsState()
     val currentPosition by playerViewModel.currentPosition.collectAsState()
     val duration by playerViewModel.duration.collectAsState()
-    val isShuffleEnabled by playerViewModel.isShuffleEnabled.collectAsState()
+    val playMode by playerViewModel.playMode.collectAsState()
     val isFavorite by playerViewModel.isFavorite.collectAsState()
 
     val scrollState = rememberScrollState()
@@ -241,18 +242,22 @@ fun PlayerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Shuffle button
+                    // Play mode button
                     IconButton(
-                        onClick = { playerViewModel.toggleShuffle() }
+                        onClick = { playerViewModel.togglePlayMode() }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Shuffle,
-                            contentDescription = "Shuffle",
-                            tint = if (isShuffleEnabled) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                            imageVector = when (playMode) {
+                                PlayMode.LOOP -> Icons.Default.Repeat
+                                PlayMode.SHUFFLE -> Icons.Default.Shuffle
+                                PlayMode.REPEAT_ONE -> Icons.Default.RepeatOne
                             },
+                            contentDescription = when (playMode) {
+                                PlayMode.LOOP -> "Loop Playlist"
+                                PlayMode.SHUFFLE -> "Shuffle"
+                                PlayMode.REPEAT_ONE -> "Repeat One"
+                            },
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(28.dp)
                         )
                     }
