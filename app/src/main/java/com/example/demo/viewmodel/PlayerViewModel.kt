@@ -1,12 +1,19 @@
 package com.example.demo.viewmodel
 
 import android.app.Application
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.demo.data.AppDatabase
 import com.example.demo.data.PlaylistRepository
 import com.example.demo.data.Song
 import com.example.demo.data.SongRepository
+import com.example.demo.service.MusicPlaybackService
 import com.example.demo.service.MusicPlayer
 import com.example.demo.service.PlaybackState
 import com.example.demo.service.PlayMode
@@ -22,7 +29,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     
     private val songRepository: SongRepository
     private val playlistRepository: PlaylistRepository
-    val musicPlayer: MusicPlayer = MusicPlayer(application)
+    private var musicPlaybackService: MusicPlaybackService? = null
+    private var serviceBound = false
+    
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.d("PlayerViewModel", "Service connected")
+            val binder = service as MusicPlaybackService.MusicBinder
+            musicPlaybackService = binder.getService()
+            serviceBound = true
+            
+            // Set the play next callback
+            musicPlaybackService?.setOnPlayNextCallback {
+                Log.d("PlayerViewModel", "Play next callback triggered")
+                playNext()
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d("PlayerViewModel", "Service disconnected")
+            serviceBound = false
+            musicPlaybackService = null
+        }
+    }
+    
+    val musicPlayer: MusicPlayer
+        get() = musicPlaybackService?.getMusicPlayer() ?: throw IllegalStateException("Service not bound")
     
     private val _currentSong = MutableStateFlow<Song?>(null)
     val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
@@ -48,7 +80,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _isFavorite = MutableStateFlow(false)
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
     
-    val playbackState: StateFlow<PlaybackState> = musicPlayer.playbackState
+    val playbackState: StateFlow<PlaybackState>
+        get() = musicPlaybackService?.getMusicPlayer()?.playbackState 
+            ?: MutableStateFlow(PlaybackState.Idle).asStateFlow()
     
     private var progressJob: Job? = null
     private var favoriteObserverJob: Job? = null
@@ -58,14 +92,27 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         songRepository = SongRepository(database.songDao(), database.playlistDao())
         playlistRepository = PlaylistRepository(database.playlistDao())
         
+        // Start and bind to the music service
+        val intent = Intent(application, MusicPlaybackService::class.java)
+        application.startService(intent)
+        application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        
         // Monitor playback state changes
         viewModelScope.launch {
-            playbackState.collect { state ->
-                when (state) {
-                    is PlaybackState.Playing -> startProgressTracking()
-                    is PlaybackState.Paused -> stopProgressTracking()
-                    is PlaybackState.Completed -> playNext()
-                    else -> stopProgressTracking()
+            while (isActive) {
+                delay(100)
+                if (serviceBound) {
+                    musicPlaybackService?.getMusicPlayer()?.playbackState?.collect { state ->
+                        when (state) {
+                            is PlaybackState.Playing -> startProgressTracking()
+                            is PlaybackState.Paused -> stopProgressTracking()
+                            is PlaybackState.Completed -> {
+                                stopProgressTracking()
+                            }
+                            else -> stopProgressTracking()
+                        }
+                    }
+                    break
                 }
             }
         }
@@ -85,7 +132,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             _currentIndex.value = index
             val song = songs[index]
             _currentSong.value = song
-            musicPlayer.playSong(song.id, song.link)
+            
+            if (serviceBound) {
+                musicPlayer.playSong(song.id, song.link)
+                
+                // Start foreground service with notification
+                musicPlaybackService?.startForegroundService(song.name, song.author)
+            }
             
             // Reset duration, it will be updated by progress tracking
             _duration.value = 0
@@ -104,9 +157,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             // Force an immediate duration update after a short delay
             viewModelScope.launch {
                 delay(200) // Wait for MediaPlayer to be ready
-                val dur = musicPlayer.getDuration()
-                if (dur > 0) {
-                    _duration.value = dur
+                if (serviceBound) {
+                    val dur = musicPlayer.getDuration()
+                    if (dur > 0) {
+                        _duration.value = dur
+                    }
                 }
             }
         }
@@ -208,6 +263,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
     
     fun togglePlayPause() {
+        if (!serviceBound) return
+        
         when (playbackState.value) {
             is PlaybackState.Playing -> musicPlayer.pause()
             is PlaybackState.Paused -> musicPlayer.resume()
@@ -229,6 +286,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
     
     fun seekTo(position: Int) {
+        if (!serviceBound) return
         musicPlayer.seekTo(position)
         _currentPosition.value = position
         updateProgress()
@@ -237,19 +295,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun startProgressTracking() {
         stopProgressTracking()
         progressJob = viewModelScope.launch {
-            while (isActive) {
-                val position = musicPlayer.getCurrentPosition()
-                val duration = musicPlayer.getDuration()
-                
-                // Update duration if we got a valid value
-                if (duration > 0 && _duration.value != duration) {
-                    _duration.value = duration
+            while (isActive && serviceBound) {
+                try {
+                    val position = musicPlayer.getCurrentPosition()
+                    val duration = musicPlayer.getDuration()
+                    
+                    // Update duration if we got a valid value
+                    if (duration > 0 && _duration.value != duration) {
+                        _duration.value = duration
+                    }
+                    
+                    _currentPosition.value = position
+                    updateProgress()
+                    
+                    delay(100) // Update every 100ms
+                } catch (e: Exception) {
+                    Log.e("PlayerViewModel", "Error tracking progress", e)
+                    break
                 }
-                
-                _currentPosition.value = position
-                updateProgress()
-                
-                delay(100) // Update every 100ms
             }
         }
     }
@@ -273,6 +336,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         super.onCleared()
         stopProgressTracking()
         favoriteObserverJob?.cancel()
-        musicPlayer.release()
+        
+        // Unbind from service
+        if (serviceBound) {
+            getApplication<Application>().unbindService(serviceConnection)
+            serviceBound = false
+        }
     }
 }

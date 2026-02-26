@@ -13,26 +13,33 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class MusicPlayer(private val context: Context) {
-    
+
     private var mediaPlayer: MediaPlayer? = null
     private var currentSongId: Long? = null
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
     private var playbackDelayed = false
     private var resumeOnFocusGain = false
-    
+    private var hasAudioFocus = false
+    private var onCompletionCallback: (() -> Unit)? = null
+
     private val _playbackState = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
-    
+
     private val _currentPosition = MutableStateFlow(0)
     val currentPosition: StateFlow<Int> = _currentPosition.asStateFlow()
-    
+
     private val _duration = MutableStateFlow(0)
     val duration: StateFlow<Int> = _duration.asStateFlow()
-    
+
+    fun setOnCompletionCallback(callback: () -> Unit) {
+        onCompletionCallback = callback
+    }
+
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
+                hasAudioFocus = true
                 // Resume playback if we were paused due to focus loss
                 synchronized(this) {
                     if (playbackDelayed || resumeOnFocusGain) {
@@ -48,6 +55,7 @@ class MusicPlayer(private val context: Context) {
                 }
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
+                hasAudioFocus = false
                 // Lost focus permanently (e.g., another app starts playing music)
                 // Stop playback completely and don't resume
                 synchronized(this) {
@@ -59,6 +67,7 @@ class MusicPlayer(private val context: Context) {
                 // but pause() allows user to manually resume if they want
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                hasAudioFocus = false
                 // Lost focus for a short time: pause playback and resume when focus is regained
                 synchronized(this) {
                     resumeOnFocusGain = try {
@@ -80,21 +89,21 @@ class MusicPlayer(private val context: Context) {
             }
         }
     }
-    
+
     private fun requestAudioFocus(): Boolean {
         val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
-            
+
             audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(audioAttributes)
                 .setAcceptsDelayedFocusGain(false) // Be more aggressive - don't wait
                 .setWillPauseWhenDucked(true) // Force other apps to pause, not just duck
                 .setOnAudioFocusChangeListener(audioFocusChangeListener)
                 .build()
-            
+
             audioManager.requestAudioFocus(audioFocusRequest!!)
         } else {
             @Suppress("DEPRECATION")
@@ -104,19 +113,27 @@ class MusicPlayer(private val context: Context) {
                 AudioManager.AUDIOFOCUS_GAIN
             )
         }
-        
+
         return when (result) {
-            AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> true
+            AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> {
+                hasAudioFocus = true
+                true
+            }
             AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
-                // Don't accept delayed focus - fail immediately
-                Log.w("MusicPlayer", "Audio focus delayed, not playing")
+                // Accept delayed focus for background playback
+                Log.i("MusicPlayer", "Audio focus delayed, will play when granted")
+                playbackDelayed = true
                 false
             }
-            else -> false
+            else -> {
+                hasAudioFocus = false
+                false
+            }
         }
     }
-    
+
     private fun abandonAudioFocus() {
+        hasAudioFocus = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             audioFocusRequest?.let {
                 audioManager.abandonAudioFocusRequest(it)
@@ -126,17 +143,16 @@ class MusicPlayer(private val context: Context) {
             audioManager.abandonAudioFocus(audioFocusChangeListener)
         }
     }
-    
+
     fun playSong(songId: Long, uri: String) {
         try {
-            // Request audio focus before playing
-            if (!requestAudioFocus()) {
-                Log.w("MusicPlayer", "Failed to gain audio focus")
-                if (!playbackDelayed) {
-                    return
-                }
+            // Request audio focus before playing, but allow playback if we already have it
+            val audioFocusGranted = requestAudioFocus()
+            if (!audioFocusGranted && !hasAudioFocus && !playbackDelayed) {
+                Log.w("MusicPlayer", "Failed to gain audio focus and don't currently have it")
+                return
             }
-            
+
             // If same song is playing, just resume
             if (currentSongId == songId && mediaPlayer != null) {
                 if (!mediaPlayer!!.isPlaying) {
@@ -145,10 +161,10 @@ class MusicPlayer(private val context: Context) {
                 }
                 return
             }
-            
+
             // Release previous player
             releaseMediaPlayer()
-            
+
             currentSongId = songId
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
@@ -157,37 +173,39 @@ class MusicPlayer(private val context: Context) {
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .build()
                 )
-                
+
                 setDataSource(context, Uri.parse(uri))
                 prepare()
-                
+
                 // Set duration after prepare
                 _duration.value = duration
-                
+
                 start()
-                
+
                 setOnCompletionListener {
                     // Check if this is still the current song to avoid race conditions
                     if (currentSongId == songId) {
                         _playbackState.value = PlaybackState.Completed(songId)
+                        // Trigger callback immediately
+                        onCompletionCallback?.invoke()
                     }
                 }
-                
+
                 setOnErrorListener { mp, what, extra ->
                     Log.e("MusicPlayer", "Error: what=$what, extra=$extra")
                     _playbackState.value = PlaybackState.Error("Playback error occurred")
                     true
                 }
             }
-            
+
             _playbackState.value = PlaybackState.Playing(songId)
-            
+
         } catch (e: Exception) {
             Log.e("MusicPlayer", "Error playing song", e)
             _playbackState.value = PlaybackState.Error(e.message ?: "Failed to play song")
         }
     }
-    
+
     fun pause() {
         try {
             mediaPlayer?.let {
@@ -202,7 +220,7 @@ class MusicPlayer(private val context: Context) {
             Log.e("MusicPlayer", "Error pausing: ${e.message}")
         }
     }
-    
+
     fun resume() {
         try {
             mediaPlayer?.let {
@@ -217,7 +235,7 @@ class MusicPlayer(private val context: Context) {
             Log.e("MusicPlayer", "Error resuming: ${e.message}")
         }
     }
-    
+
     fun seekTo(position: Int) {
         try {
             mediaPlayer?.seekTo(position)
@@ -226,7 +244,7 @@ class MusicPlayer(private val context: Context) {
             Log.e("MusicPlayer", "Error seeking: ${e.message}")
         }
     }
-    
+
     fun getCurrentPosition(): Int {
         return try {
             mediaPlayer?.currentPosition ?: 0
@@ -235,7 +253,7 @@ class MusicPlayer(private val context: Context) {
             0
         }
     }
-    
+
     fun getDuration(): Int {
         return try {
             mediaPlayer?.duration ?: 0
@@ -244,7 +262,7 @@ class MusicPlayer(private val context: Context) {
             0
         }
     }
-    
+
     fun isPlaying(): Boolean {
         return try {
             mediaPlayer?.isPlaying ?: false
@@ -253,7 +271,7 @@ class MusicPlayer(private val context: Context) {
             false
         }
     }
-    
+
     private fun releaseMediaPlayer() {
         try {
             mediaPlayer?.apply {
@@ -269,7 +287,7 @@ class MusicPlayer(private val context: Context) {
             mediaPlayer = null
         }
     }
-    
+
     fun release() {
         releaseMediaPlayer()
         abandonAudioFocus()

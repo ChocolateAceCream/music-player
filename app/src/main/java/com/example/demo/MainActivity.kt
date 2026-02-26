@@ -9,10 +9,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -27,26 +31,82 @@ import com.example.demo.screens.FindScreen
 import com.example.demo.screens.HomeScreen
 import com.example.demo.screens.LibraryScreen
 import com.example.demo.screens.PlaylistDetailScreen
+import com.example.demo.service.FloatingPlayerManager
 import com.example.demo.ui.theme.DemoTheme
 import com.example.demo.viewmodel.PlayerViewModel
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var floatingPlayerManager: FloatingPlayerManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        floatingPlayerManager = FloatingPlayerManager(this)
+
+        // Request overlay permission on first launch
+        floatingPlayerManager.checkAndRequestPermission(this) {
+            // Permission granted
+        }
+
         setContent {
             DemoTheme {
-                MainScreen()
+                MainScreen(floatingPlayerManager)
             }
         }
+    }
+
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        floatingPlayerManager.unregisterPlayerControls()
+        floatingPlayerManager.hideFloatingPlayer()
     }
 }
 
 @Composable
-fun MainScreen() {
+fun MainScreen(floatingPlayerManager: FloatingPlayerManager) {
     val navController = rememberNavController()
     val playerViewModel: PlayerViewModel = viewModel()
     val currentSong by playerViewModel.currentSong.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Register player controls for floating window
+    DisposableEffect(Unit) {
+        floatingPlayerManager.registerPlayerControls(
+            onPrevious = { playerViewModel.playPrevious() },
+            onPlayPause = { playerViewModel.togglePlayPause() },
+            onNext = { playerViewModel.playNext() }
+        )
+        onDispose {
+            floatingPlayerManager.unregisterPlayerControls()
+        }
+    }
+
+    // Show/hide floating player based on app lifecycle
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    // App goes to background, show floating player if song is playing
+                    if (currentSong != null && floatingPlayerManager.hasOverlayPermission()) {
+                        floatingPlayerManager.showFloatingPlayer()
+                    }
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    // App comes to foreground, hide floating player
+                    floatingPlayerManager.hideFloatingPlayer()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -61,7 +121,7 @@ fun MainScreen() {
                 if (currentSong != null && !isOnPlayerScreen) {
                     MiniPlayer(
                         playerViewModel = playerViewModel,
-                        onExpand = { 
+                        onExpand = {
                             navController.navigate("player")
                         }
                     )
@@ -121,6 +181,6 @@ fun MainScreen() {
 @Composable
 fun MainScreenPreview() {
     DemoTheme {
-        MainScreen()
+        // MainScreen() - Preview disabled due to FloatingPlayerManager dependency
     }
 }
