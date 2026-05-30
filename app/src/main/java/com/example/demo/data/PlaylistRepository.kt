@@ -20,6 +20,10 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
         return playlistDao.getPlaylistWithSongs(playlistId)
     }
 
+    suspend fun getAllPlaylistsWithSongsOnce(): List<PlaylistWithSongs> {
+        return playlistDao.getAllPlaylistsWithSongsList()
+    }
+
     suspend fun createPlaylist(name: String, isSystem: Boolean = false): Long {
         val playlist = Playlist(name = name, isSystem = isSystem)
         return playlistDao.insertPlaylist(playlist)
@@ -138,7 +142,7 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
     suspend fun getFavoritePlaylistId(): Long? {
         return playlistDao.getFavoritePlaylistId()
     }
-    
+
     suspend fun addToRecentPlayed(songId: Long) {
         try {
             // Get Recent Played playlist
@@ -147,23 +151,23 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
                 android.util.Log.e("PlaylistRepository", "Recent Played playlist not found!")
                 return
             }
-            
+
             android.util.Log.d("PlaylistRepository", "Adding song $songId to Recent Played playlist ${recentPlayedPlaylist.id}")
-            
+
             // Remove the song if it already exists in the playlist
             removeSongFromPlaylist(recentPlayedPlaylist.id, songId)
-            
+
             // Get current songs in the playlist
             val playlistWithSongs = getPlaylistWithSongs(recentPlayedPlaylist.id)
             val currentSongs = playlistWithSongs?.songs ?: emptyList()
-            
+
             android.util.Log.d("PlaylistRepository", "Current songs in Recent Played: ${currentSongs.size}")
-            
+
             // Add the song at position 0 (top of the list)
             addSongToPlaylist(recentPlayedPlaylist.id, songId, position = 0)
-            
+
             android.util.Log.d("PlaylistRepository", "Song added to Recent Played")
-            
+
             // If we now have more than 50 songs, remove the oldest ones
             if (currentSongs.size >= 50) {
                 // Remove songs beyond the 50th position

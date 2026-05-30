@@ -24,28 +24,28 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
 
     private val _playlistWithSongs = MutableStateFlow<PlaylistWithSongs?>(null)
     val playlistWithSongs: StateFlow<PlaylistWithSongs?> = _playlistWithSongs.asStateFlow()
-    
+
     private val _showRenameDialog = MutableStateFlow(false)
     val showRenameDialog: StateFlow<Boolean> = _showRenameDialog.asStateFlow()
-    
+
     private val _renameError = MutableStateFlow<String?>(null)
     val renameError: StateFlow<String?> = _renameError.asStateFlow()
-    
+
     private val _showAddSongsDialog = MutableStateFlow(false)
     val showAddSongsDialog: StateFlow<Boolean> = _showAddSongsDialog.asStateFlow()
-    
+
     private val _availableSongs = MutableStateFlow<List<Song>>(emptyList())
     val availableSongs: StateFlow<List<Song>> = _availableSongs.asStateFlow()
-    
+
     private val _isMultiSelectMode = MutableStateFlow(false)
     val isMultiSelectMode: StateFlow<Boolean> = _isMultiSelectMode.asStateFlow()
-    
+
     private val _selectedSongIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedSongIds: StateFlow<Set<Long>> = _selectedSongIds.asStateFlow()
-    
+
     private val _showAddToPlaylistDialog = MutableStateFlow(false)
     val showAddToPlaylistDialog: StateFlow<Boolean> = _showAddToPlaylistDialog.asStateFlow()
-    
+
     private val _allPlaylists = MutableStateFlow<List<PlaylistWithSongs>>(emptyList())
     val allPlaylists: StateFlow<List<PlaylistWithSongs>> = _allPlaylists.asStateFlow()
 
@@ -93,7 +93,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     fun resumeSong() {
         musicPlayer.resume()
     }
-    
+
     fun toggleSongFavorite(songId: Long) {
         viewModelScope.launch {
             songRepository.toggleFavorite(songId)
@@ -103,19 +103,19 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             }
         }
     }
-    
+
     fun showRenameDialog() {
         val playlist = _playlistWithSongs.value?.playlist
         if (playlist?.isSystem == false) {
             _showRenameDialog.value = true
         }
     }
-    
+
     fun hideRenameDialog() {
         _showRenameDialog.value = false
         _renameError.value = null
     }
-    
+
     fun renamePlaylist(newName: String) {
         viewModelScope.launch {
             val playlist = _playlistWithSongs.value?.playlist
@@ -134,7 +134,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             }
         }
     }
-    
+
     fun showAddSongsDialog() {
         val playlist = _playlistWithSongs.value?.playlist
         if (playlist?.isSystem == false) {
@@ -148,11 +148,11 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             }
         }
     }
-    
+
     fun hideAddSongsDialog() {
         _showAddSongsDialog.value = false
     }
-    
+
     fun addSongsToPlaylist(songIds: List<Long>) {
         viewModelScope.launch {
             val playlist = _playlistWithSongs.value?.playlist
@@ -164,7 +164,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             }
         }
     }
-    
+
     fun removeSongFromPlaylist(songId: Long) {
         viewModelScope.launch {
             val playlist = _playlistWithSongs.value?.playlist
@@ -175,20 +175,20 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             }
         }
     }
-    
+
     // Multi-select methods
     fun enterMultiSelectMode(songId: Long) {
         _isMultiSelectMode.value = true
         _selectedSongIds.value = setOf(songId)
     }
-    
+
     fun exitMultiSelectMode() {
         _isMultiSelectMode.value = false
         _selectedSongIds.value = emptySet()
         // Also hide any open dialogs
         _showAddToPlaylistDialog.value = false
     }
-    
+
     fun toggleSongSelection(songId: Long) {
         val currentSelection = _selectedSongIds.value
         _selectedSongIds.value = if (currentSelection.contains(songId)) {
@@ -197,7 +197,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             currentSelection + songId
         }
     }
-    
+
     fun showAddToPlaylistDialog() {
         viewModelScope.launch {
             // Load all playlists
@@ -209,11 +209,11 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             }
         }
     }
-    
+
     fun hideAddToPlaylistDialog() {
         _showAddToPlaylistDialog.value = false
     }
-    
+
     fun addSelectedSongsToPlaylist(targetPlaylistId: Long) {
         viewModelScope.launch {
             val songIds = _selectedSongIds.value.toList()
@@ -222,7 +222,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             exitMultiSelectMode()
         }
     }
-    
+
     fun createPlaylistAndAddSongs(playlistName: String) {
         viewModelScope.launch {
             val newPlaylistId = playlistRepository.createPlaylist(playlistName)
@@ -232,7 +232,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             exitMultiSelectMode()
         }
     }
-    
+
     fun deleteSelectedSongs() {
         viewModelScope.launch {
             val playlist = _playlistWithSongs.value?.playlist

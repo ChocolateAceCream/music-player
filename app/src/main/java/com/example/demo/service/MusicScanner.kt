@@ -108,17 +108,20 @@ class MusicScanner(
                 // Get existing songs from Favorite and Recent Played playlists
                 val favoritePlaylist = playlistRepository.getPlaylistByName(SystemPlaylists.FAVORITE)
                 val recentPlayedPlaylist = playlistRepository.getPlaylistByName(SystemPlaylists.RECENT_PLAYED)
-                
-                val favoritePlaylistWithSongs = favoritePlaylist?.let { 
-                    playlistRepository.getPlaylistWithSongs(it.id) 
+
+                val favoritePlaylistWithSongs = favoritePlaylist?.let {
+                    playlistRepository.getPlaylistWithSongs(it.id)
                 }
-                val recentPlayedPlaylistWithSongs = recentPlayedPlaylist?.let { 
-                    playlistRepository.getPlaylistWithSongs(it.id) 
+                val recentPlayedPlaylistWithSongs = recentPlayedPlaylist?.let {
+                    playlistRepository.getPlaylistWithSongs(it.id)
                 }
-                
+
                 // Create a map of existing songs by their file path (link)
                 val scannedSongsByLink = songs.associateBy { it.link }
-                
+
+                // Capture all playlists with their songs so we can restore user playlists after re-inserting songs
+                val allPlaylistsWithSongs = playlistRepository.getAllPlaylistsWithSongsOnce()
+
                 // Clear existing songs first
                 songRepository.deleteAllSongs()
 
@@ -167,11 +170,11 @@ class MusicScanner(
                         }
                     }
                 }
-                
+
                 // Restore Favorite playlist - only keep songs that still exist
                 if (favoritePlaylist != null && favoritePlaylistWithSongs != null) {
                     playlistRepository.removeAllSongsFromPlaylist(favoritePlaylist.id)
-                    
+
                     favoritePlaylistWithSongs.songs.forEachIndexed { index, oldSong ->
                         // Check if this song still exists in the scanned files
                         val newSongId = songIdsByLink[oldSong.link]
@@ -187,11 +190,11 @@ class MusicScanner(
                         }
                     }
                 }
-                
+
                 // Restore Recent Played playlist - only keep songs that still exist
                 if (recentPlayedPlaylist != null && recentPlayedPlaylistWithSongs != null) {
                     playlistRepository.removeAllSongsFromPlaylist(recentPlayedPlaylist.id)
-                    
+
                     recentPlayedPlaylistWithSongs.songs.forEachIndexed { index, oldSong ->
                         // Check if this song still exists in the scanned files
                         val newSongId = songIdsByLink[oldSong.link]
@@ -206,6 +209,26 @@ class MusicScanner(
                             if (oldSong.lastPlayedAt != null) {
                                 songRepository.updateLastPlayedAt(newSongId, oldSong.lastPlayedAt)
                             }
+                        }
+                    }
+                }
+
+                // Restore user-created playlists (keep only songs that still exist)
+                allPlaylistsWithSongs.forEach { pw ->
+                    val pl = pw.playlist
+                    if (pl.isSystem) return@forEach
+
+                    // Clear any existing cross refs for this playlist
+                    playlistRepository.removeAllSongsFromPlaylist(pl.id)
+
+                    pw.songs.forEachIndexed { index, oldSong ->
+                        val newSongId = songIdsByLink[oldSong.link]
+                        if (newSongId != null) {
+                            playlistRepository.addSongToPlaylist(
+                                playlistId = pl.id,
+                                songId = newSongId,
+                                position = index
+                            )
                         }
                     }
                 }
