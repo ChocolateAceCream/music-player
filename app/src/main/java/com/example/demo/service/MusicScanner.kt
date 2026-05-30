@@ -38,6 +38,9 @@ class MusicScanner(
             val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
             val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
 
+            // Load deleted links so we can skip files the user permanently deleted
+            val deletedLinks = songRepository.getAllDeletedLinks()
+
             context.contentResolver.query(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 projection,
@@ -76,6 +79,13 @@ class MusicScanner(
                             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                             id
                         )
+
+                        val linkString = contentUri.toString()
+
+                        // Skip files that user permanently deleted
+                        if (deletedLinks.contains(linkString)) {
+                            continue
+                        }
 
                         // Get album art URI
                         val albumArtUri = ContentUris.withAppendedId(

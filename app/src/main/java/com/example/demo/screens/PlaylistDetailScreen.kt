@@ -17,6 +17,13 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
+import android.app.Activity
+import android.content.Context
+import android.provider.MediaStore
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -55,9 +62,21 @@ fun PlaylistDetailScreen(
     val selectedSongIds by viewModel.selectedSongIds.collectAsState()
     val showAddToPlaylistDialog by viewModel.showAddToPlaylistDialog.collectAsState()
     val allPlaylists by viewModel.allPlaylists.collectAsState()
+    val pendingDeleteUris by viewModel.pendingDeleteUris.collectAsState()
 
     LaunchedEffect(playlistId) {
         viewModel.loadPlaylist(playlistId)
+    }
+
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.finalizeDeletion(true)
+        } else {
+            viewModel.finalizeDeletion(false)
+        }
     }
 
     Scaffold(
@@ -241,6 +260,32 @@ fun PlaylistDetailScreen(
                 },
                 onCreateNew = { playlistName ->
                     viewModel.createPlaylistAndAddSongs(playlistName)
+                }
+            )
+        }
+
+        // Handle pending delete request: show confirmation, then call MediaStore delete intent
+        if (pendingDeleteUris.isNotEmpty()) {
+            // Show a simple confirmation dialog before launching system delete
+            AlertDialog(
+                onDismissRequest = { viewModel.finalizeDeletion(false) },
+                title = { Text("Delete selected songs") },
+                text = { Text("Do you want to permanently delete the selected songs from your device? This action cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        try {
+                            val resolver = context.contentResolver
+                            val pendingIntent = MediaStore.createDeleteRequest(resolver, pendingDeleteUris)
+                            val req = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                            launcher.launch(req)
+                        } catch (e: Exception) {
+                            // If we cannot create the request, finalize as failure
+                            viewModel.finalizeDeletion(false)
+                        }
+                    }) { Text("Delete") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.finalizeDeletion(false) }) { Text("Cancel") }
                 }
             )
         }

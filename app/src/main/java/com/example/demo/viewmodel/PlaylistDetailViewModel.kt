@@ -46,6 +46,12 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     private val _showAddToPlaylistDialog = MutableStateFlow(false)
     val showAddToPlaylistDialog: StateFlow<Boolean> = _showAddToPlaylistDialog.asStateFlow()
 
+    private val _pendingDeleteUris = MutableStateFlow<List<android.net.Uri>>(emptyList())
+    val pendingDeleteUris: StateFlow<List<android.net.Uri>> = _pendingDeleteUris.asStateFlow()
+
+    private val _pendingDeleteSongIds = MutableStateFlow<List<Long>>(emptyList())
+    val pendingDeleteSongIds: StateFlow<List<Long>> = _pendingDeleteSongIds.asStateFlow()
+
     private val _allPlaylists = MutableStateFlow<List<PlaylistWithSongs>>(emptyList())
     val allPlaylists: StateFlow<List<PlaylistWithSongs>> = _allPlaylists.asStateFlow()
 
@@ -242,43 +248,19 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
 
             // If this is the All Songs system playlist, perform permanent deletion from device
             if (playlist.name == SystemPlaylists.ALL_SONGS) {
-                // Get all playlists to clean up cross refs
-                val allPlaylists = playlistRepository.getAllPlaylistsWithSongsOnce()
-
+                // Prepare URIs and song ids and request a delete confirmation from the UI/Activity
+                val uris = mutableListOf<android.net.Uri>()
                 songIds.forEach { songId ->
                     val song = songRepository.getSongById(songId)
                     if (song != null) {
-                        try {
-                            // Attempt to delete the file from device via ContentResolver
-                            val uri = android.net.Uri.parse(song.link)
-                            try {
-                                val deletedCount = getApplication<Application>().contentResolver.delete(uri, null, null)
-                                // ignore deletedCount, proceed to mark link deleted regardless
-                            } catch (e: Exception) {
-                                // Log but continue
-                                android.util.Log.e("PlaylistDetailVM", "Failed to delete file: ${e.message}")
-                            }
-
-                            // Mark link as deleted so future scans skip it
-                            songRepository.markLinkDeleted(song.link)
-
-                            // Remove from all playlists
-                            allPlaylists.forEach { pw ->
-                                playlistRepository.removeSongFromPlaylist(pw.playlist.id, songId)
-                            }
-
-                            // Remove the song row from DB
-                            songRepository.deleteSong(song)
-                        } catch (e: Exception) {
-                            android.util.Log.e("PlaylistDetailVM", "Error deleting song $songId: ${e.message}", e)
-                        }
+                        uris.add(android.net.Uri.parse(song.link))
                     }
                 }
 
-                // Refresh view
-                hideAddToPlaylistDialog()
-                exitMultiSelectMode()
-                loadPlaylist(playlist.id)
+                if (uris.isNotEmpty()) {
+                    _pendingDeleteUris.value = uris
+                    _pendingDeleteSongIds.value = songIds
+                }
                 return@launch
             }
 
@@ -297,5 +279,42 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     override fun onCleared() {
         super.onCleared()
         musicPlayer.release()
+    }
+
+    // Called by the UI/Activity after the system delete flow completes.
+    fun finalizeDeletion(success: Boolean) {
+        viewModelScope.launch {
+            val pendingIds = _pendingDeleteSongIds.value
+            if (success && pendingIds.isNotEmpty()) {
+                // Remove cross refs from all playlists, mark links deleted and remove DB rows
+                val allPlaylists = playlistRepository.getAllPlaylistsWithSongsOnce()
+                pendingIds.forEach { songId ->
+                    val song = songRepository.getSongById(songId)
+                    if (song != null) {
+                        try {
+                            // Mark link deleted so scanner will skip it
+                            songRepository.markLinkDeleted(song.link)
+
+                            // Remove from all playlists
+                            allPlaylists.forEach { pw ->
+                                playlistRepository.removeSongFromPlaylist(pw.playlist.id, songId)
+                            }
+
+                            // Remove DB row
+                            songRepository.deleteSong(song)
+                        } catch (e: Exception) {
+                            android.util.Log.e("PlaylistDetailVM", "Error finalizing deletion for $songId: ${e.message}", e)
+                        }
+                    }
+                }
+            }
+
+            // Clear pending state and refresh
+            _pendingDeleteUris.value = emptyList()
+            _pendingDeleteSongIds.value = emptyList()
+            hideAddToPlaylistDialog()
+            exitMultiSelectMode()
+            _playlistWithSongs.value?.playlist?.id?.let { loadPlaylist(it) }
+        }
     }
 }
