@@ -100,9 +100,10 @@ fun PlaylistDetailScreen(
                         }
                     },
                     actions = {
-                        // Show delete button for user playlists and for the All Songs system playlist
-                        val isAllSongs = playlistWithSongs?.playlist?.name == SystemPlaylists.ALL_SONGS
-                        if (playlistWithSongs?.playlist?.isSystem == false || isAllSongs) {
+                        // Show delete button for user playlists and for the All Songs and Recent Download system playlists
+                        val isAllOrRecentDownload = playlistWithSongs?.playlist?.name == SystemPlaylists.ALL_SONGS ||
+                            playlistWithSongs?.playlist?.name == SystemPlaylists.RECENT_DOWNLOAD
+                        if (playlistWithSongs?.playlist?.isSystem == false || isAllOrRecentDownload) {
                             IconButton(
                                 onClick = { viewModel.deleteSelectedSongs() },
                                 enabled = selectedSongIds.isNotEmpty()

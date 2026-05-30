@@ -246,8 +246,8 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
 
             val songIds = _selectedSongIds.value.toList()
 
-            // If this is the All Songs system playlist, perform permanent deletion from device
-            if (playlist.name == SystemPlaylists.ALL_SONGS) {
+            // If this is the All Songs or Recent Download system playlist, perform permanent deletion from device
+            if (playlist.name == SystemPlaylists.ALL_SONGS || playlist.name == SystemPlaylists.RECENT_DOWNLOAD) {
                 // Prepare URIs and song ids and request a delete confirmation from the UI/Activity
                 val uris = mutableListOf<android.net.Uri>()
                 songIds.forEach { songId ->
