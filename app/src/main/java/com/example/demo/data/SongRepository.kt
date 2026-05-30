@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.map
 
 class SongRepository(
     private val songDao: SongDao,
-    private val playlistDao: PlaylistDao
+    private val playlistDao: PlaylistDao,
+    private val deletedSongDao: DeletedSongDao
 ) {
 
     val allSongs: Flow<List<Song>> = songDao.getAllSongs()
@@ -79,5 +80,22 @@ class SongRepository(
 
     fun observeFavoriteStatus(songId: Long): Flow<Boolean> {
         return songDao.observeFavoriteStatus(songId).map { it ?: false }
+    }
+
+    // Deleted links handling
+    suspend fun markLinkDeleted(link: String) {
+        deletedSongDao.insertDeletedSong(DeletedSong(link = link))
+    }
+
+    suspend fun isLinkDeleted(link: String): Boolean {
+        return deletedSongDao.countByLink(link) > 0
+    }
+
+    suspend fun getAllDeletedLinks(): Set<String> {
+        return deletedSongDao.getAllDeletedLinks().toSet()
+    }
+
+    suspend fun removeDeletedLink(link: String) {
+        deletedSongDao.removeDeletedLink(link)
     }
 }

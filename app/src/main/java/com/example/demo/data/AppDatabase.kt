@@ -8,18 +8,19 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Song::class, Playlist::class, PlaylistSongCrossRef::class],
-    version = 5,
+    entities = [Song::class, Playlist::class, PlaylistSongCrossRef::class, DeletedSong::class],
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun songDao(): SongDao
     abstract fun playlistDao(): PlaylistDao
-    
+    abstract fun deletedSongDao(): DeletedSongDao
+
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
-        
+
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 // Add isFavorite column to songs table
@@ -28,7 +29,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             }
         }
-        
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(

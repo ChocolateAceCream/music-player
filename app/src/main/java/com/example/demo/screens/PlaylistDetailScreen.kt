@@ -31,6 +31,7 @@ import com.example.demo.components.AddToPlaylistDialog
 import com.example.demo.components.FavoriteIconButton
 import com.example.demo.components.RenamePlaylistDialog
 import com.example.demo.data.Song
+import com.example.demo.data.SystemPlaylists
 import com.example.demo.service.PlaybackState
 import com.example.demo.viewmodel.PlaylistDetailViewModel
 import com.example.demo.viewmodel.PlayerViewModel
@@ -80,8 +81,9 @@ fun PlaylistDetailScreen(
                         }
                     },
                     actions = {
-                        // Show delete button only for user playlists
-                        if (playlistWithSongs?.playlist?.isSystem == false) {
+                        // Show delete button for user playlists and for the All Songs system playlist
+                        val isAllSongs = playlistWithSongs?.playlist?.name == SystemPlaylists.ALL_SONGS
+                        if (playlistWithSongs?.playlist?.isSystem == false || isAllSongs) {
                             IconButton(
                                 onClick = { viewModel.deleteSelectedSongs() },
                                 enabled = selectedSongIds.isNotEmpty()

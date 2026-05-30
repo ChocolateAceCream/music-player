@@ -16,27 +16,27 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
-    
+
     private val songRepository: SongRepository
     private val playlistRepository: PlaylistRepository
     private val musicScanner: MusicScanner
-    
+
     private val _scanState = MutableStateFlow<ScanState>(ScanState.Idle)
     val scanState: StateFlow<ScanState> = _scanState.asStateFlow()
-    
+
     val playlists: StateFlow<List<PlaylistWithSongs>>
-    
+
     init {
         val database = AppDatabase.getDatabase(application)
-        songRepository = SongRepository(database.songDao(), database.playlistDao())
+        songRepository = SongRepository(database.songDao(), database.playlistDao(), database.deletedSongDao())
         playlistRepository = PlaylistRepository(database.playlistDao())
         musicScanner = MusicScanner(application, songRepository, playlistRepository)
-        
+
         // Initialize default playlists
         viewModelScope.launch {
             playlistRepository.initializeDefaultPlaylists()
         }
-        
+
         // Collect playlists with songs
         val playlistsFlow = MutableStateFlow<List<PlaylistWithSongs>>(emptyList())
         viewModelScope.launch {
@@ -46,14 +46,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
         playlists = playlistsFlow.asStateFlow()
     }
-    
+
     fun startScan() {
         viewModelScope.launch {
             _scanState.value = ScanState.Scanning
-            
+
             try {
                 val result = musicScanner.scanMusicFiles()
-                
+
                 _scanState.value = if (result.success) {
                     ScanState.Success(result.songsFound, result.errorCount)
                 } else {
@@ -64,29 +64,29 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
-    
+
     fun resetScanState() {
         _scanState.value = ScanState.Idle
     }
-    
+
     fun createPlaylist(name: String) {
         viewModelScope.launch {
             playlistRepository.createPlaylist(name)
         }
     }
-    
+
     fun deletePlaylist(playlist: Playlist) {
         viewModelScope.launch {
             playlistRepository.deletePlaylist(playlist)
         }
     }
-    
+
     fun addSongToPlaylist(playlistId: Long, songId: Long) {
         viewModelScope.launch {
             playlistRepository.addSongToPlaylist(playlistId, songId)
         }
     }
-    
+
     fun removeSongFromPlaylist(playlistId: Long, songId: Long) {
         viewModelScope.launch {
             playlistRepository.removeSongFromPlaylist(playlistId, songId)

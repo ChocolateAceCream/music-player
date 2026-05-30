@@ -19,30 +19,30 @@ class FindViewModel(application: Application) : AndroidViewModel(application) {
     private val playlistRepository: PlaylistRepository
 
     private val _allSongs = MutableStateFlow<List<Song>>(emptyList())
-    
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-    
+
     private val _filteredSongs = MutableStateFlow<List<Song>>(emptyList())
     val filteredSongs: StateFlow<List<Song>> = _filteredSongs.asStateFlow()
-    
+
     private val _isMultiSelectMode = MutableStateFlow(false)
     val isMultiSelectMode: StateFlow<Boolean> = _isMultiSelectMode.asStateFlow()
-    
+
     private val _selectedSongIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedSongIds: StateFlow<Set<Long>> = _selectedSongIds.asStateFlow()
-    
+
     private val _showAddToPlaylistDialog = MutableStateFlow(false)
     val showAddToPlaylistDialog: StateFlow<Boolean> = _showAddToPlaylistDialog.asStateFlow()
-    
+
     private val _allPlaylists = MutableStateFlow<List<PlaylistWithSongs>>(emptyList())
     val allPlaylists: StateFlow<List<PlaylistWithSongs>> = _allPlaylists.asStateFlow()
 
     init {
         val database = AppDatabase.getDatabase(application)
-        songRepository = SongRepository(database.songDao(), database.playlistDao())
+        songRepository = SongRepository(database.songDao(), database.playlistDao(), database.deletedSongDao())
         playlistRepository = PlaylistRepository(database.playlistDao())
-        
+
         loadAllSongs()
     }
 
@@ -84,13 +84,13 @@ class FindViewModel(application: Application) : AndroidViewModel(application) {
         _isMultiSelectMode.value = true
         _selectedSongIds.value = setOf(songId)
     }
-    
+
     fun exitMultiSelectMode() {
         _isMultiSelectMode.value = false
         _selectedSongIds.value = emptySet()
         _showAddToPlaylistDialog.value = false
     }
-    
+
     fun toggleSongSelection(songId: Long) {
         val currentSelection = _selectedSongIds.value
         _selectedSongIds.value = if (currentSelection.contains(songId)) {
@@ -99,7 +99,7 @@ class FindViewModel(application: Application) : AndroidViewModel(application) {
             currentSelection + songId
         }
     }
-    
+
     fun showAddToPlaylistDialog() {
         viewModelScope.launch {
             playlistRepository.allPlaylistsWithSongs.collect { playlists ->
@@ -109,11 +109,11 @@ class FindViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    
+
     fun hideAddToPlaylistDialog() {
         _showAddToPlaylistDialog.value = false
     }
-    
+
     fun addSelectedSongsToPlaylist(targetPlaylistId: Long) {
         viewModelScope.launch {
             val songIds = _selectedSongIds.value.toList()
@@ -122,7 +122,7 @@ class FindViewModel(application: Application) : AndroidViewModel(application) {
             exitMultiSelectMode()
         }
     }
-    
+
     fun createPlaylistAndAddSongs(playlistName: String) {
         viewModelScope.launch {
             val newPlaylistId = playlistRepository.createPlaylist(playlistName)

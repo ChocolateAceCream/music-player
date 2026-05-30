@@ -54,7 +54,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     init {
         val database = AppDatabase.getDatabase(application)
         playlistRepository = PlaylistRepository(database.playlistDao())
-        songRepository = SongRepository(database.songDao(), database.playlistDao())
+        songRepository = SongRepository(database.songDao(), database.playlistDao(), database.deletedSongDao())
     }
 
     fun loadPlaylist(playlistId: Long) {
@@ -236,15 +236,59 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     fun deleteSelectedSongs() {
         viewModelScope.launch {
             val playlist = _playlistWithSongs.value?.playlist
-            if (playlist != null && !playlist.isSystem) {
-                val songIds = _selectedSongIds.value.toList()
+            if (playlist == null) return@launch
+
+            val songIds = _selectedSongIds.value.toList()
+
+            // If this is the All Songs system playlist, perform permanent deletion from device
+            if (playlist.name == SystemPlaylists.ALL_SONGS) {
+                // Get all playlists to clean up cross refs
+                val allPlaylists = playlistRepository.getAllPlaylistsWithSongsOnce()
+
+                songIds.forEach { songId ->
+                    val song = songRepository.getSongById(songId)
+                    if (song != null) {
+                        try {
+                            // Attempt to delete the file from device via ContentResolver
+                            val uri = android.net.Uri.parse(song.link)
+                            try {
+                                val deletedCount = getApplication<Application>().contentResolver.delete(uri, null, null)
+                                // ignore deletedCount, proceed to mark link deleted regardless
+                            } catch (e: Exception) {
+                                // Log but continue
+                                android.util.Log.e("PlaylistDetailVM", "Failed to delete file: ${e.message}")
+                            }
+
+                            // Mark link as deleted so future scans skip it
+                            songRepository.markLinkDeleted(song.link)
+
+                            // Remove from all playlists
+                            allPlaylists.forEach { pw ->
+                                playlistRepository.removeSongFromPlaylist(pw.playlist.id, songId)
+                            }
+
+                            // Remove the song row from DB
+                            songRepository.deleteSong(song)
+                        } catch (e: Exception) {
+                            android.util.Log.e("PlaylistDetailVM", "Error deleting song $songId: ${e.message}", e)
+                        }
+                    }
+                }
+
+                // Refresh view
+                hideAddToPlaylistDialog()
+                exitMultiSelectMode()
+                loadPlaylist(playlist.id)
+                return@launch
+            }
+
+            // Default behavior for user playlists: remove cross refs only
+            if (!playlist.isSystem) {
                 songIds.forEach { songId ->
                     playlistRepository.removeSongFromPlaylist(playlist.id, songId)
                 }
-                // Make sure dialog is hidden
                 hideAddToPlaylistDialog()
                 exitMultiSelectMode()
-                // Reload the playlist to update the list
                 loadPlaylist(playlist.id)
             }
         }
