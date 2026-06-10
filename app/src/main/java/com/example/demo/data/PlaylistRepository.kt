@@ -64,6 +64,11 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
         if (playlistDao.playlistExists(SystemPlaylists.RECENT_DOWNLOAD) == 0) {
             createPlaylist(SystemPlaylists.RECENT_DOWNLOAD, isSystem = true)
         }
+
+        // Check and create "Most Played" playlist
+        if (playlistDao.playlistExists(SystemPlaylists.MOST_PLAYED) == 0) {
+            createPlaylist(SystemPlaylists.MOST_PLAYED, isSystem = true)
+        }
     }
 
     suspend fun addSongToPlaylist(playlistId: Long, songId: Long, position: Int = 0) {

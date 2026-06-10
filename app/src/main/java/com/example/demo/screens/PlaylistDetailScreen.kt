@@ -12,8 +12,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -197,6 +195,8 @@ fun PlaylistDetailScreen(
                     items(playlist.songs.size) { index ->
                         val song = playlist.songs[index]
                         val isSelected = selectedSongIds.contains(song.id)
+                        val isMostPlayed = playlist.playlist.name == SystemPlaylists.MOST_PLAYED
+                        val allowSelection = !isMostPlayed && (!playlist.playlist.isSystem || playlist.playlist.name == SystemPlaylists.ALL_SONGS || playlist.playlist.name == SystemPlaylists.RECENT_DOWNLOAD)
 
                         SongItem(
                             song = song,
@@ -213,7 +213,7 @@ fun PlaylistDetailScreen(
                                 }
                             },
                             onSongLongPress = {
-                                if (!isMultiSelectMode) {
+                                if (!isMultiSelectMode && allowSelection) {
                                     viewModel.enterMultiSelectMode(song.id)
                                 }
                             },
@@ -263,6 +263,21 @@ fun PlaylistDetailScreen(
                     viewModel.createPlaylistAndAddSongs(playlistName)
                 }
             )
+        }
+
+        // When pendingDeleteUris become available, directly launch the system delete request
+        val ctx = LocalContext.current
+        LaunchedEffect(pendingDeleteUris) {
+            if (pendingDeleteUris.isNotEmpty()) {
+                try {
+                    val resolver = ctx.contentResolver
+                    val pendingIntent = MediaStore.createDeleteRequest(resolver, pendingDeleteUris)
+                    val req = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                    launcher.launch(req)
+                } catch (e: Exception) {
+                    viewModel.finalizeDeletion(false)
+                }
+            }
         }
 
         // Handle pending delete request: show confirmation, then call MediaStore delete intent
@@ -400,21 +415,6 @@ fun SongItem(
                     onToggle = onFavoriteToggle,
                     modifier = Modifier.size(40.dp)
                 )
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                // Play/Pause indicator
-                if (isPlaying || isPaused) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Playing" else "Paused",
-                        tint = if (isPlaying) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        }
-                    )
-                }
             }
         }
     }

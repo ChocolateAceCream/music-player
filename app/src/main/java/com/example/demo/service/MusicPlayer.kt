@@ -144,13 +144,13 @@ class MusicPlayer(private val context: Context) {
         }
     }
 
-    fun playSong(songId: Long, uri: String) {
+    fun playSong(songId: Long, uri: String): Boolean {
         try {
             // Request audio focus before playing, but allow playback if we already have it
             val audioFocusGranted = requestAudioFocus()
             if (!audioFocusGranted && !hasAudioFocus && !playbackDelayed) {
                 Log.w("MusicPlayer", "Failed to gain audio focus and don't currently have it")
-                return
+                return false
             }
 
             // If same song is playing, just resume
@@ -159,7 +159,7 @@ class MusicPlayer(private val context: Context) {
                     mediaPlayer?.start()
                     _playbackState.value = PlaybackState.Playing(songId)
                 }
-                return
+                return false
             }
 
             // Release previous player
@@ -199,10 +199,12 @@ class MusicPlayer(private val context: Context) {
             }
 
             _playbackState.value = PlaybackState.Playing(songId)
+            return true
 
         } catch (e: Exception) {
             Log.e("MusicPlayer", "Error playing song", e)
             _playbackState.value = PlaybackState.Error(e.message ?: "Failed to play song")
+            return false
         }
     }
 

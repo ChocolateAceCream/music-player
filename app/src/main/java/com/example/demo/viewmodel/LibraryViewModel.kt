@@ -8,9 +8,11 @@ import com.example.demo.data.Playlist
 import com.example.demo.data.PlaylistRepository
 import com.example.demo.data.PlaylistWithSongs
 import com.example.demo.data.SongRepository
+import com.example.demo.data.SystemPlaylists
 import com.example.demo.service.MusicScanner
 import com.example.demo.service.ScanResult
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -40,7 +42,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         // Collect playlists with songs
         val playlistsFlow = MutableStateFlow<List<PlaylistWithSongs>>(emptyList())
         viewModelScope.launch {
-            playlistRepository.allPlaylistsWithSongs.collect { playlistList ->
+            combine(
+                playlistRepository.allPlaylistsWithSongs,
+                songRepository.mostPlayedSongs
+            ) { playlistList, mostPlayedSongs ->
+                playlistList.map { playlistWithSongs ->
+                    if (playlistWithSongs.playlist.name == SystemPlaylists.MOST_PLAYED) {
+                        playlistWithSongs.copy(songs = mostPlayedSongs)
+                    } else {
+                        playlistWithSongs
+                    }
+                }
+            }.collect { playlistList ->
                 playlistsFlow.value = playlistList
             }
         }

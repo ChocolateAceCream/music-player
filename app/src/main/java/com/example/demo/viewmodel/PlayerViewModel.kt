@@ -139,9 +139,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val song = songs[index]
             _currentSong.value = song
 
-            if (serviceBound) {
+            val startedPlayback = if (serviceBound) {
                 musicPlayer.playSong(song.id, song.link)
+            } else {
+                false
+            }
 
+            if (serviceBound) {
                 // Start foreground service with notification including album art
                 musicPlaybackService?.startForegroundService(
                     song.name,
@@ -160,7 +164,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
             // Update last played timestamp and add to Recent Played playlist
             viewModelScope.launch {
-                songRepository.updateLastPlayedAt(song.id)
+                if (startedPlayback) {
+                    songRepository.recordSongPlayed(song.id)
+                }
                 playlistRepository.addToRecentPlayed(song.id)
             }
 
@@ -305,7 +311,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             else -> {
                 // If idle, play current song
                 _currentSong.value?.let { song ->
-                    musicPlayer.playSong(song.id, song.link)
+                    if (musicPlayer.playSong(song.id, song.link)) {
+                        viewModelScope.launch {
+                            songRepository.recordSongPlayed(song.id)
+                        }
+                    }
                 }
             }
         }

@@ -8,28 +8,31 @@ import androidx.room.PrimaryKey
 data class Song(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    
+
     @ColumnInfo(name = "name")
     val name: String,
-    
+
     @ColumnInfo(name = "author")
     val author: String,
-    
+
     @ColumnInfo(name = "album")
     val album: String,
-    
+
     @ColumnInfo(name = "cover_page_link")
     val coverPageLink: String,
-    
+
     @ColumnInfo(name = "link")
     val link: String,
-    
+
     @ColumnInfo(name = "last_played_at")
     val lastPlayedAt: Long? = null,
-    
+
+    @ColumnInfo(name = "play_count")
+    val playCount: Long = 0,
+
     @ColumnInfo(name = "downloaded_at")
     val downloadedAt: Long = System.currentTimeMillis(),
-    
+
     @ColumnInfo(name = "is_favorite")
     val isFavorite: Boolean = false
 )

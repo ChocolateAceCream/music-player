@@ -8,13 +8,13 @@ import androidx.room.PrimaryKey
 data class Playlist(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    
+
     @ColumnInfo(name = "name")
     val name: String,
-    
+
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
-    
+
     @ColumnInfo(name = "is_system")
     val isSystem: Boolean = false
 )
@@ -24,4 +24,5 @@ object SystemPlaylists {
     const val RECENT_PLAYED = "Recent Played"
     const val FAVORITE = "Favorite"
     const val RECENT_DOWNLOAD = "Recent Download"
+    const val MOST_PLAYED = "Most Played"
 }

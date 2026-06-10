@@ -1,6 +1,7 @@
 package com.example.demo.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class SongRepository(
@@ -14,6 +15,8 @@ class SongRepository(
     val recentlyPlayedSongs: Flow<List<Song>> = songDao.getRecentlyPlayedSongs()
 
     val recentlyDownloadedSongs: Flow<List<Song>> = songDao.getRecentlyDownloadedSongs()
+
+    val mostPlayedSongs: Flow<List<Song>> = songDao.getMostPlayedSongs()
 
     suspend fun getSongById(songId: Long): Song? {
         return songDao.getSongById(songId)
@@ -45,6 +48,15 @@ class SongRepository(
 
     suspend fun updateLastPlayedAt(songId: Long, timestamp: Long = System.currentTimeMillis()) {
         songDao.updateLastPlayedAt(songId, timestamp)
+    }
+
+    suspend fun recordSongPlayed(songId: Long, timestamp: Long = System.currentTimeMillis()) {
+        songDao.updateLastPlayedAt(songId, timestamp)
+        songDao.incrementPlayCount(songId)
+    }
+
+    suspend fun getMostPlayedSongsOnce(limit: Int = 100): List<Song> {
+        return songDao.getMostPlayedSongs(limit).first()
     }
 
     suspend fun toggleFavorite(songId: Long): Boolean {

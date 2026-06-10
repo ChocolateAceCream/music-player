@@ -65,18 +65,31 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
 
     fun loadPlaylist(playlistId: Long) {
         viewModelScope.launch {
-            val playlist = playlistRepository.getPlaylistWithSongs(playlistId)
-            val adjustedPlaylist = playlist?.let {
-                when (it.playlist.name) {
-                    SystemPlaylists.RECENT_DOWNLOAD -> {
-                        // Sort by download date (newest first)
-                        it.copy(songs = it.songs.sortedByDescending { song -> song.downloadedAt })
+            val playlist = playlistRepository.getPlaylistById(playlistId)
+            val adjustedPlaylist = when (playlist?.name) {
+                SystemPlaylists.MOST_PLAYED -> {
+                    playlist?.let {
+                        PlaylistWithSongs(
+                            playlist = it,
+                            songs = songRepository.getMostPlayedSongsOnce(100)
+                        )
                     }
-                    SystemPlaylists.RECENT_PLAYED -> {
-                        // Sort by last played date (most recent first)
-                        it.copy(songs = it.songs.sortedByDescending { song -> song.lastPlayedAt ?: 0 })
+                }
+                else -> {
+                    val loadedPlaylist = playlistRepository.getPlaylistWithSongs(playlistId)
+                    loadedPlaylist?.let {
+                        when (it.playlist.name) {
+                            SystemPlaylists.RECENT_DOWNLOAD -> {
+                                // Sort by download date (newest first)
+                                it.copy(songs = it.songs.sortedByDescending { song -> song.downloadedAt })
+                            }
+                            SystemPlaylists.RECENT_PLAYED -> {
+                                // Sort by last played date (most recent first)
+                                it.copy(songs = it.songs.sortedByDescending { song -> song.lastPlayedAt ?: 0 })
+                            }
+                            else -> it
+                        }
                     }
-                    else -> it
                 }
             }
             _playlistWithSongs.value = adjustedPlaylist
@@ -84,11 +97,11 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun playSong(song: Song) {
-        musicPlayer.playSong(song.id, song.link)
-
-        // Update last played timestamp
-        viewModelScope.launch {
-            songRepository.updateLastPlayedAt(song.id)
+        if (musicPlayer.playSong(song.id, song.link)) {
+            // Update last played timestamp
+            viewModelScope.launch {
+                songRepository.recordSongPlayed(song.id)
+            }
         }
     }
 
