@@ -11,6 +11,8 @@ import com.example.demo.data.SystemPlaylists
 import com.example.demo.data.SongRepository
 import com.example.demo.service.MusicPlayer
 import com.example.demo.service.PlaybackState
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +26,9 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
 
     private val _playlistWithSongs = MutableStateFlow<PlaylistWithSongs?>(null)
     val playlistWithSongs: StateFlow<PlaylistWithSongs?> = _playlistWithSongs.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private val _showRenameDialog = MutableStateFlow(false)
     val showRenameDialog: StateFlow<Boolean> = _showRenameDialog.asStateFlow()
@@ -57,6 +62,10 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
 
     val playbackState: StateFlow<PlaybackState> = musicPlayer.playbackState
 
+    private var currentPlaylistId: Long? = null
+    private var currentPlaylistName: String? = null
+    private var searchJob: Job? = null
+
     init {
         val database = AppDatabase.getDatabase(application)
         playlistRepository = PlaylistRepository(database.playlistDao())
@@ -64,14 +73,30 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun loadPlaylist(playlistId: Long) {
+        currentPlaylistId = playlistId
         viewModelScope.launch {
             val playlist = playlistRepository.getPlaylistById(playlistId)
-            val adjustedPlaylist = when (playlist?.name) {
+            currentPlaylistName = playlist?.name
+            val adjustedPlaylist: PlaylistWithSongs? = when (playlist?.name) {
                 SystemPlaylists.MOST_PLAYED -> {
                     playlist?.let {
                         PlaylistWithSongs(
                             playlist = it,
                             songs = songRepository.getMostPlayedSongsOnce(100)
+                        )
+                    }
+                }
+                SystemPlaylists.ALL_SONGS -> {
+                    playlist?.let {
+                        val query = _searchQuery.value.trim()
+                        val songs = if (query.isBlank()) {
+                            playlistRepository.getPlaylistWithSongs(playlistId)?.songs ?: emptyList()
+                        } else {
+                            songRepository.searchSongs(query).first()
+                        }
+                        PlaylistWithSongs(
+                            playlist = it,
+                            songs = songs
                         )
                     }
                 }
@@ -94,6 +119,29 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
             }
             _playlistWithSongs.value = adjustedPlaylist
         }
+    }
+
+    fun onSearchQueryChange(query: String) {
+        _searchQuery.value = query
+
+        if (currentPlaylistName != SystemPlaylists.ALL_SONGS) return
+
+        val playlistId = currentPlaylistId ?: return
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            val playlist = playlistRepository.getPlaylistById(playlistId) ?: return@launch
+            val normalizedQuery = query.trim()
+            val songs = if (normalizedQuery.isBlank()) {
+                playlistRepository.getPlaylistWithSongs(playlistId)?.songs ?: emptyList()
+            } else {
+                songRepository.searchSongs(normalizedQuery).first()
+            }
+            _playlistWithSongs.value = PlaylistWithSongs(playlist = playlist, songs = songs)
+        }
+    }
+
+    fun clearSearch() {
+        onSearchQueryChange("")
     }
 
     fun playSong(song: Song) {
@@ -291,6 +339,7 @@ class PlaylistDetailViewModel(application: Application) : AndroidViewModel(appli
 
     override fun onCleared() {
         super.onCleared()
+        searchJob?.cancel()
         musicPlayer.release()
     }
 

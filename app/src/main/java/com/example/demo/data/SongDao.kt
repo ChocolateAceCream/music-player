@@ -20,7 +20,7 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE play_count > 0 ORDER BY play_count DESC, last_played_at DESC, name ASC LIMIT :limit")
     fun getMostPlayedSongs(limit: Int = 100): Flow<List<Song>>
 
-    @Query("SELECT * FROM songs WHERE name LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR album LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM songs WHERE name LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR album LIKE '%' || :query || '%' ORDER BY name ASC")
     fun searchSongs(query: String): Flow<List<Song>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

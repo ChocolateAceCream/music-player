@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,6 +62,7 @@ fun PlaylistDetailScreen(
     val showAddToPlaylistDialog by viewModel.showAddToPlaylistDialog.collectAsState()
     val allPlaylists by viewModel.allPlaylists.collectAsState()
     val pendingDeleteUris by viewModel.pendingDeleteUris.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     LaunchedEffect(playlistId) {
         viewModel.loadPlaylist(playlistId)
@@ -171,56 +173,123 @@ fun PlaylistDetailScreen(
         }
     ) { paddingValues ->
         playlistWithSongs?.let { playlist ->
-            if (playlist.songs.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No songs in this playlist",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(playlist.songs.size) { index ->
-                        val song = playlist.songs[index]
-                        val isSelected = selectedSongIds.contains(song.id)
-                        val isMostPlayed = playlist.playlist.name == SystemPlaylists.MOST_PLAYED
-                        val allowSelection = !isMostPlayed && (!playlist.playlist.isSystem || playlist.playlist.name == SystemPlaylists.ALL_SONGS || playlist.playlist.name == SystemPlaylists.RECENT_DOWNLOAD)
+            val isAllSongsPlaylist = playlist.playlist.name == SystemPlaylists.ALL_SONGS
+            val hasSearchQuery = searchQuery.isNotBlank()
 
-                        SongItem(
-                            song = song,
-                            isPlaying = playbackState is PlaybackState.Playing && currentSong?.id == song.id,
-                            isPaused = playbackState is PlaybackState.Paused && currentSong?.id == song.id,
-                            isMultiSelectMode = isMultiSelectMode,
-                            isSelected = isSelected,
-                            onSongClick = {
-                                if (isMultiSelectMode) {
-                                    viewModel.toggleSongSelection(song.id)
-                                } else {
-                                    // Set the entire playlist and start playing from this song
-                                    playerViewModel.setPlaylist(playlist.songs, index)
-                                }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                if (isAllSongsPlaylist) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        shape = MaterialTheme.shapes.large,
+                        tonalElevation = 2.dp,
+                        shadowElevation = 1.dp
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { viewModel.onSearchQueryChange(it) },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = {
+                                Text("Search songs, artists, albums")
                             },
-                            onSongLongPress = {
-                                if (!isMultiSelectMode && allowSelection) {
-                                    viewModel.enterMultiSelectMode(song.id)
-                                }
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search"
+                                )
                             },
-                            onFavoriteToggle = {
-                                viewModel.toggleSongFavorite(song.id)
-                            }
+                            trailingIcon = if (searchQuery.isNotBlank()) {
+                                {
+                                    IconButton(onClick = { viewModel.clearSearch() }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Clear search"
+                                        )
+                                    }
+                                }
+                            } else null,
+                            singleLine = true,
+                            shape = MaterialTheme.shapes.large,
+                            colors = OutlinedTextFieldDefaults.colors()
                         )
+                    }
+                    if (hasSearchQuery) {
+                        Text(
+                            text = "${playlist.songs.size} result${if (playlist.songs.size == 1) "" else "s"}",
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (playlist.songs.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (isAllSongsPlaylist && hasSearchQuery) {
+                                    "No songs match your search"
+                                } else {
+                                    "No songs in this playlist"
+                                },
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (isAllSongsPlaylist && hasSearchQuery) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                FilledTonalButton(onClick = { viewModel.clearSearch() }) {
+                                    Text("Clear search")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(playlist.songs.size) { index ->
+                            val song = playlist.songs[index]
+                            val isSelected = selectedSongIds.contains(song.id)
+                            val isMostPlayed = playlist.playlist.name == SystemPlaylists.MOST_PLAYED
+                            val allowSelection = !isMostPlayed && (!playlist.playlist.isSystem || playlist.playlist.name == SystemPlaylists.ALL_SONGS || playlist.playlist.name == SystemPlaylists.RECENT_DOWNLOAD)
+
+                            SongItem(
+                                song = song,
+                                isPlaying = playbackState is PlaybackState.Playing && currentSong?.id == song.id,
+                                isPaused = playbackState is PlaybackState.Paused && currentSong?.id == song.id,
+                                isMultiSelectMode = isMultiSelectMode,
+                                isSelected = isSelected,
+                                onSongClick = {
+                                    if (isMultiSelectMode) {
+                                        viewModel.toggleSongSelection(song.id)
+                                    } else {
+                                        // Set the entire playlist and start playing from this song
+                                        playerViewModel.setPlaylist(playlist.songs, index)
+                                    }
+                                },
+                                onSongLongPress = {
+                                    if (!isMultiSelectMode && allowSelection) {
+                                        viewModel.enterMultiSelectMode(song.id)
+                                    }
+                                },
+                                onFavoriteToggle = {
+                                    viewModel.toggleSongFavorite(song.id)
+                                }
+                            )
+                        }
                     }
                 }
             }
