@@ -115,6 +115,9 @@ class MusicScanner(
 
             // Save all songs to database and get their IDs
             if (songs.isNotEmpty()) {
+                // Capture existing songs so we can preserve playback metadata like play count
+                val existingSongsByLink = songRepository.getAllSongsOnce().associateBy { it.link }
+
                 // Get existing songs from Favorite and Recent Played playlists
                 val favoritePlaylist = playlistRepository.getPlaylistByName(SystemPlaylists.FAVORITE)
                 val recentPlayedPlaylist = playlistRepository.getPlaylistByName(SystemPlaylists.RECENT_PLAYED)
@@ -126,9 +129,6 @@ class MusicScanner(
                     playlistRepository.getPlaylistWithSongs(it.id)
                 }
 
-                // Create a map of existing songs by their file path (link)
-                val scannedSongsByLink = songs.associateBy { it.link }
-
                 // Capture all playlists with their songs so we can restore user playlists after re-inserting songs
                 val allPlaylistsWithSongs = playlistRepository.getAllPlaylistsWithSongsOnce()
 
@@ -138,7 +138,13 @@ class MusicScanner(
                 // Insert new songs and collect their IDs
                 val songIdsByLink = mutableMapOf<String, Long>()
                 for (song in songs) {
-                    val songId = songRepository.insertSong(song)
+                    val previousSong = existingSongsByLink[song.link]
+                    val songToInsert = song.copy(
+                        lastPlayedAt = previousSong?.lastPlayedAt ?: song.lastPlayedAt,
+                        playCount = previousSong?.playCount ?: song.playCount,
+                        isFavorite = previousSong?.isFavorite ?: song.isFavorite
+                    )
+                    val songId = songRepository.insertSong(songToInsert)
                     songIdsByLink[song.link] = songId
                 }
 

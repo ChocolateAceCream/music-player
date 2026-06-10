@@ -59,6 +59,10 @@ class SongRepository(
         return songDao.getMostPlayedSongs(limit).first()
     }
 
+    suspend fun getAllSongsOnce(): List<Song> {
+        return allSongs.first()
+    }
+
     suspend fun toggleFavorite(songId: Long): Boolean {
         val song = songDao.getSongById(songId)
         if (song != null) {
