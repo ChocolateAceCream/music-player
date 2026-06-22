@@ -4,29 +4,35 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Binder
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
 import com.example.demo.MainActivity
 import com.example.demo.R
+import com.example.demo.data.AppDatabase
+import com.example.demo.data.Song
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.net.URL
 
-class MusicPlaybackService : Service() {
+class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     private val binder = MusicBinder()
     private lateinit var musicPlayer: MusicPlayer
@@ -34,11 +40,14 @@ class MusicPlaybackService : Service() {
     private var onPlayPreviousCallback: (() -> Unit)? = null
     private lateinit var mediaSession: MediaSessionCompat
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var playbackQueue: List<Song> = emptyList()
+    private var queueIndex = 0
 
     companion object {
         private const val TAG = "MusicPlaybackService"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "music_playback_channel"
+        private const val MEDIA_ROOT_ID = "music_root"
         
         const val ACTION_PLAY = "com.example.demo.ACTION_PLAY"
         const val ACTION_PAUSE = "com.example.demo.ACTION_PAUSE"
@@ -59,7 +68,7 @@ class MusicPlaybackService : Service() {
         // Set completion callback to trigger next song
         musicPlayer.setOnCompletionCallback {
             Log.d(TAG, "Song completed, triggering next song")
-            onPlayNextCallback?.invoke()
+            skipToNextInService()
         }
         
         createNotificationChannel()
@@ -71,6 +80,19 @@ class MusicPlaybackService : Service() {
             setFlags(
                 MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
                 MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+            )
+
+            val appIntent = Intent(
+                this@MusicPlaybackService,
+                MainActivity::class.java
+            )
+            setSessionActivity(
+                PendingIntent.getActivity(
+                    this@MusicPlaybackService,
+                    0,
+                    appIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
             )
             
             setCallback(object : MediaSessionCompat.Callback() {
@@ -88,12 +110,24 @@ class MusicPlaybackService : Service() {
 
                 override fun onSkipToNext() {
                     Log.d(TAG, "MediaSession: onSkipToNext")
-                    onPlayNextCallback?.invoke()
+                    skipToNextInService()
                 }
 
                 override fun onSkipToPrevious() {
                     Log.d(TAG, "MediaSession: onSkipToPrevious")
-                    onPlayPreviousCallback?.invoke()
+                    skipToPreviousInService()
+                }
+
+                override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
+                    val songId = mediaId?.toLongOrNull() ?: return
+                    serviceScope.launch {
+                        val songs = loadAllSongs()
+                        val index = songs.indexOfFirst { it.id == songId }
+                        if (index >= 0) {
+                            setPlaybackQueue(songs, index)
+                            playQueueIndex(index)
+                        }
+                    }
                 }
 
                 override fun onStop() {
@@ -113,6 +147,8 @@ class MusicPlaybackService : Service() {
             
             isActive = true
         }
+        sessionToken = mediaSession.sessionToken
+        updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
     }
 
     private fun updatePlaybackState(state: Int) {
@@ -121,18 +157,65 @@ class MusicPlaybackService : Service() {
             .setActions(
                 PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or
+                PlaybackStateCompat.ACTION_STOP or
+                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
                 PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
                 PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                 PlaybackStateCompat.ACTION_SEEK_TO
             )
             .setState(state, position, 1.0f)
+            .setActiveQueueItemId(
+                playbackQueue.getOrNull(queueIndex)?.id
+                    ?: MediaSessionCompat.QueueItem.UNKNOWN_ID.toLong()
+            )
             .build()
         
         mediaSession.setPlaybackState(playbackState)
     }
 
-    override fun onBind(intent: Intent?): IBinder {
-        return binder
+    override fun onBind(intent: Intent): IBinder? {
+        return if (intent.action == "android.media.browse.MediaBrowserService") {
+            super.onBind(intent)
+        } else {
+            binder
+        }
+    }
+
+    override fun onGetRoot(
+        clientPackageName: String,
+        clientUid: Int,
+        rootHints: Bundle?
+    ): BrowserRoot = BrowserRoot(MEDIA_ROOT_ID, null)
+
+    override fun onLoadChildren(
+        parentId: String,
+        result: Result<MutableList<MediaBrowserCompat.MediaItem>>
+    ) {
+        if (parentId != MEDIA_ROOT_ID) {
+            result.sendResult(mutableListOf())
+            return
+        }
+
+        result.detach()
+        serviceScope.launch {
+            val items = loadAllSongs().map { song ->
+                val description = MediaDescriptionCompat.Builder()
+                    .setMediaId(song.id.toString())
+                    .setTitle(song.name)
+                    .setSubtitle(song.author)
+                    .apply {
+                        song.coverPageLink.takeIf { it.isNotBlank() }?.let {
+                            setIconUri(android.net.Uri.parse(it))
+                        }
+                    }
+                    .build()
+                MediaBrowserCompat.MediaItem(
+                    description,
+                    MediaBrowserCompat.MediaItem.FLAG_PLAYABLE
+                )
+            }.toMutableList()
+            result.sendResult(items)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -150,10 +233,10 @@ class MusicPlaybackService : Service() {
                 updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
             }
             ACTION_NEXT -> {
-                onPlayNextCallback?.invoke()
+                skipToNextInService()
             }
             ACTION_PREVIOUS -> {
-                onPlayPreviousCallback?.invoke()
+                skipToPreviousInService()
             }
             ACTION_STOP -> {
                 stopForeground(true)
@@ -176,12 +259,87 @@ class MusicPlaybackService : Service() {
         onPlayPreviousCallback = callback
     }
 
+    fun clearPlaybackCallbacks() {
+        onPlayNextCallback = null
+        onPlayPreviousCallback = null
+    }
+
+    fun setPlaybackQueue(songs: List<Song>, currentIndex: Int) {
+        // A newly bound phone UI may not have loaded its playlist yet. Do not let
+        // that empty state erase a queue already created by Android Auto.
+        if (songs.isEmpty()) return
+
+        playbackQueue = songs.toList()
+        queueIndex = currentIndex.coerceIn(0, (songs.size - 1).coerceAtLeast(0))
+        publishPlaybackQueue()
+    }
+
+    private fun publishPlaybackQueue() {
+        if (!::mediaSession.isInitialized) return
+
+        mediaSession.setQueue(
+            playbackQueue.map { song ->
+                val description = MediaDescriptionCompat.Builder()
+                    .setMediaId(song.id.toString())
+                    .setTitle(song.name)
+                    .setSubtitle(song.author)
+                    .apply {
+                        song.coverPageLink.takeIf { it.isNotBlank() }?.let {
+                            setIconUri(android.net.Uri.parse(it))
+                        }
+                    }
+                    .build()
+
+                MediaSessionCompat.QueueItem(description, song.id)
+            }
+        )
+        mediaSession.setQueueTitle(getString(R.string.media_service_name))
+    }
+
+    private fun skipToNextInService() {
+        serviceScope.launch {
+            ensureQueue()
+            if (playbackQueue.isNotEmpty()) {
+                playQueueIndex((queueIndex + 1) % playbackQueue.size)
+            }
+        }
+    }
+
+    private fun skipToPreviousInService() {
+        serviceScope.launch {
+            ensureQueue()
+            if (playbackQueue.isNotEmpty()) {
+                playQueueIndex(
+                    if (queueIndex > 0) queueIndex - 1 else playbackQueue.lastIndex
+                )
+            }
+        }
+    }
+
+    private suspend fun ensureQueue() {
+        if (playbackQueue.isEmpty()) {
+            setPlaybackQueue(loadAllSongs(), 0)
+        }
+    }
+
+    private suspend fun loadAllSongs(): List<Song> =
+        AppDatabase.getDatabase(applicationContext).songDao().getAllSongs().first()
+
+    private fun playQueueIndex(index: Int) {
+        val song = playbackQueue.getOrNull(index) ?: return
+        queueIndex = index
+        publishPlaybackQueue()
+        musicPlayer.playSong(song.id, song.link)
+        startForegroundService(song.name, song.author, song.coverPageLink)
+    }
+
     fun startForegroundService(songTitle: String, artist: String, albumArtUrl: String?) {
         Log.d(TAG, "startForegroundService: title=$songTitle, artist=$artist, albumArtUrl=$albumArtUrl")
         
         // Start with notification without album art first
         val notification = createNotification(songTitle, artist, null, true)
         startForeground(NOTIFICATION_ID, notification)
+        updateMediaMetadata(songTitle, artist, null)
         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
         
         // Load album art asynchronously and update notification

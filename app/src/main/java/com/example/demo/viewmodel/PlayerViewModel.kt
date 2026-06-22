@@ -50,6 +50,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 Log.d("PlayerViewModel", "Play previous callback triggered")
                 playPrevious()
             }
+
+            musicPlaybackService?.setPlaybackQueue(_playlist.value, _currentIndex.value)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -127,6 +129,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setPlaylist(songs: List<Song>, startIndex: Int = 0) {
         _playlist.value = songs
         _currentIndex.value = startIndex
+        musicPlaybackService?.setPlaybackQueue(songs, startIndex)
         if (songs.isNotEmpty() && startIndex < songs.size) {
             playSongAt(startIndex)
         }
@@ -138,6 +141,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             _currentIndex.value = index
             val song = songs[index]
             _currentSong.value = song
+            musicPlaybackService?.setPlaybackQueue(songs, index)
 
             val startedPlayback = if (serviceBound) {
                 musicPlayer.playSong(song.id, song.link)
@@ -383,6 +387,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         // Unbind from service
         if (serviceBound) {
+            musicPlaybackService?.clearPlaybackCallbacks()
             getApplication<Application>().unbindService(serviceConnection)
             serviceBound = false
         }

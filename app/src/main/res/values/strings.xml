@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">demo</string>
+    <string name="app_name">Demo Music</string>
+    <string name="media_service_name">Demo Music</string>
 </resources>
